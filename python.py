@@ -1,22 +1,21 @@
-import cffi
+import cffi, ctypes
 
 ffi = cffi.FFI()
 
 ffi.cdef('''
+    uint64_t model_pointer();
+    uint64_t model_size();
     uint32_t new_data_structure();
     uint32_t multiply_float(uint32_t index, float value);
-    float get_float(uint32_t index);
+    uint32_t serialize();
 ''')
 
 C = ffi.dlopen('target/debug/libparaforge.so')
 
-index = C.new_data_structure()
-print('Initial float value:', C.get_float(index))
-C.multiply_float(index, 2.0)
-print('Tried doubling it:', C.get_float(index))
-C.multiply_float(index, 0.5)
-print('Tried putting it back:', C.get_float(index))
+C.new_data_structure()
+C.multiply_float(0, 2.0)
+C.multiply_float(0, 0.5)
+print('Serialization return code:', C.serialize())
+print('Output:', ctypes.string_at(C.model_pointer(), C.model_size()))
 
-print('What happens when I access a structure that doesn\'t exist?',
-    C.get_float(4))
-
+print('Call with bad index:', C.multiply_float(4, 4.5))
