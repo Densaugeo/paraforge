@@ -58,6 +58,7 @@ pub extern "C" fn serialize() -> u32 {
   let data_structures = DATA_STRUCTURES.lock().unwrap();
   let mut gltf_output = GLTF_OUTPUT.lock().unwrap();
   
+  gltf_output.clear();
   for i in 0..data_structures.len() {
     serde_json::ser::to_writer(&mut (*gltf_output), &data_structures[i])
       .unwrap();

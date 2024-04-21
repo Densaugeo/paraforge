@@ -13,9 +13,11 @@ ffi.cdef('''
 C = ffi.dlopen('target/debug/libparaforge.so')
 
 C.new_data_structure()
-C.multiply_float(0, 2.0)
-C.multiply_float(0, 0.5)
 print('Serialization return code:', C.serialize())
 print('Output:', ctypes.string_at(C.model_pointer(), C.model_size()))
 
 print('Call with bad index:', C.multiply_float(4, 4.5))
+
+C.multiply_float(0, 2.0)
+print('Serialization #2 return code:', C.serialize())
+print('Output:', ctypes.string_at(C.model_pointer(), C.model_size()))
