@@ -1,7 +1,26 @@
 use std::sync::Mutex;
 use std::sync::atomic::{Ordering, AtomicU64};
 
-//static ERROR_CODE: AtomicU32 = AtomicU32::new(0);
+// These error codes are returned from WebAssembly functions, so must use a
+// WebAssembly variable type
+#[derive(Debug, Copy, Clone)]
+#[repr(u32)]
+pub enum ErrorCode {
+  None = 0,
+  Mutex = 1,
+  Generation = 2,
+  NotImplemented = 3,
+  WebAssemblyCompile = 4,
+  WebAssemblyInstance = 5,
+  WebAssemblyExecution = 6,
+  ModuleNotEMG = 7,
+  ModelGeneratorNotFound = 8,
+  ParameterCount = 9,
+  ParameterType = 10,
+  ParameterOutOfRange = 11,
+  OutputNotGLB = 12,
+}
+
 static MODEL_POINTER: AtomicU64 = AtomicU64::new(0);
 static MODEL_SIZE: AtomicU64 = AtomicU64::new(0);
 static DATA_STRUCTURES: Mutex<Vec<DataStructure>> = Mutex::new(Vec::new());
@@ -37,26 +56,39 @@ impl DataStructure {
 }
 
 #[no_mangle]
-pub extern "C" fn new_data_structure() -> u32 {
-  let mut unlocked = DATA_STRUCTURES.lock().unwrap();
-  unlocked.push(DataStructure::new());
-  0
+pub extern "C" fn new_data_structure() -> ErrorCode {
+  let mut data_structures = match DATA_STRUCTURES.lock() {
+    Ok(v) => v,
+    Err(_) => return ErrorCode::Mutex,
+  };
+  
+  data_structures.push(DataStructure::new());
+  ErrorCode::None
 }
 
 #[no_mangle]
-pub extern "C" fn multiply_float(index: u32, value: f32) -> u32 {
-  let mut unlocked = DATA_STRUCTURES.lock().unwrap();
+pub extern "C" fn multiply_float(index: u32, value: f32) -> ErrorCode {
+  let mut data_structures = match DATA_STRUCTURES.lock() {
+    Ok(v) => v,
+    Err(_) => return ErrorCode::Mutex,
+  };
   
-  if unlocked.len() <= index as usize { return 1 };
+  if data_structures.len() <= index as usize { return ErrorCode::Generation };
   
-  unlocked[index as usize].a_float *= value;
-  0
+  data_structures[index as usize].a_float *= value;
+  ErrorCode::None
 }
 
 #[no_mangle]
-pub extern "C" fn serialize() -> u32 {
-  let data_structures = DATA_STRUCTURES.lock().unwrap();
-  let mut gltf_output = GLTF_OUTPUT.lock().unwrap();
+pub extern "C" fn serialize() -> ErrorCode {
+  let data_structures = match DATA_STRUCTURES.lock() {
+    Ok(v) => v,
+    Err(_) => return ErrorCode::Mutex,
+  };
+  let mut gltf_output = match GLTF_OUTPUT.lock() {
+    Ok(v) => v,
+    Err(_) => return ErrorCode::Mutex,
+  };
   
   gltf_output.clear();
   for i in 0..data_structures.len() {
@@ -67,5 +99,5 @@ pub extern "C" fn serialize() -> u32 {
   MODEL_POINTER.store(gltf_output.as_ptr() as u64, Ordering::Relaxed);
   MODEL_SIZE.store(gltf_output.len() as u64, Ordering::Relaxed);
   
-  0
+  ErrorCode::None
 }

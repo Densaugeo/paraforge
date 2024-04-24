@@ -1,1 +1,8 @@
-/target
+__pycache__
+build
+dist
+paraforge/__pycache__
+paraforge/libparaforge.so
+paraforge.egg-info
+target
+
