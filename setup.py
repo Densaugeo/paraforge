@@ -13,9 +13,6 @@ setuptools.setup(
     long_description_content_type='text/markdown',
     url='https://github.com/Densaugeo/paraforge',
     packages=['paraforge'],
-    package_data={'': [
-        'libparaforge.so',
-    ]},
     classifiers=[
         'Programming Language :: Python :: 3',
         'Programming Language :: Rust',
@@ -26,4 +23,5 @@ setuptools.setup(
     install_requires=[
         'cffi',
     ],
+    include_package_data=True,
 )
