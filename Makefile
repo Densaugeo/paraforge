@@ -4,8 +4,12 @@ build:
 	cargo build --release
 	ln -sf ../target/release/libparaforge.so paraforge/libparaforge.so
 
-test:
+test-scratch:
 	$(PY) test.py
+
+.PHONY: test
+test:
+	$(PY) -m pytest test/test_demo.py
 
 package:
 	$(PY) -m pip install --user --upgrade setuptools wheel
