@@ -22,6 +22,7 @@ setuptools.setup(
     python_requires='>=3.12',
     install_requires=[
         'cffi',
+        'wasmtime',
     ],
     include_package_data=True,
 )

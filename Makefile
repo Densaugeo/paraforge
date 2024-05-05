@@ -1,15 +1,25 @@
 PY=python3.12
+TEST=test.py
+PYTEST_ARGS=--verbosity 2 --tb short
 
 build:
-	cargo build --release
-	ln -sf ../target/release/libparaforge.so paraforge/libparaforge.so
+	cargo build --release --target wasm32-unknown-unknown
+	ln -sf ../target/wasm32-unknown-unknown/release/paraforge.wasm paraforge/paraforge.wasm
 
 test-scratch:
-	$(PY) test.py
+	$(PY) test-scratch.py
 
-.PHONY: test
+test-all:
+	./test-all.sh
+
 test:
-	$(PY) -m pytest test/test_demo.py
+	rm -rf test-temp
+	. venv-$(PY)/bin/activate; $(PY) -u -m pytest $(PYTEST_ARGS) $(TEST)
+
+install-dev:
+	chmod 775 test-all.sh
+	$(PY) -m venv venv-$(PY)
+	. venv-$(PY)/bin/activate; $(PY) -m pip install pytest wasmtime
 
 package:
 	$(PY) -m pip install --user --upgrade setuptools wheel
@@ -23,4 +33,4 @@ upload:
 
 clean:
 	cargo clean
-	rm -rf paraforge/libparaforge.so build dist paraforge/__pycache__ paraforge.egg-info __pycache__
+	rm -rf paraforge/libparaforge.so build dist paraforge/__pycache__ paraforge.egg-info __pycache__ test-temp

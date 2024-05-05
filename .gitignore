@@ -1,8 +1,9 @@
+venv-*
+test-temp
 __pycache__
 build
 dist
 paraforge/__pycache__
-paraforge/libparaforge.so
+paraforge/paraforge.wasm
 paraforge.egg-info
 target
-

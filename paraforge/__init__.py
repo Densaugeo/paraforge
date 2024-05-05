@@ -1,7 +1,6 @@
-import ctypes, os, enum
+import os, enum
 
-import cffi
-
+import wasmtime
 
 class ErrorCode(enum.Enum):
     None_ = 0
@@ -21,31 +20,33 @@ class ErrorCode(enum.Enum):
 class ParaforgeError(Exception):
     pass
 
+store = wasmtime.Store()
+with open(f'{os.path.dirname(__file__)}/paraforge.wasm', 'rb') as f:
+    module = wasmtime.Module(store.engine, f.read())
+instance = wasmtime.Instance(store, module, [])
 
-ffi = cffi.FFI()
-
-ffi.cdef('''
-    uint64_t model_pointer();
-    uint64_t model_size();
-    uint32_t new_data_structure();
-    uint32_t multiply_float(uint32_t index, float value);
-    uint32_t serialize();
-''')
-
-rust = ffi.dlopen(f'{os.path.dirname(__file__)}/libparaforge.so')
-
-
-def check_code(return_code: int):
+def wasm_call(function: str, *args):
+    return_code = instance.exports(store)[function](store, *args)
+    
     if return_code:
         raise ParaforgeError(f'Code {return_code}: '
             f'{ErrorCode(return_code).name}')
 
+def wasm_get_atomic(function: str) -> int:
+    return instance.exports(store)[function](store)
+
 def new_data_structure():
-    check_code(rust.new_data_structure())
+    wasm_call('new_data_structure')
 
 def multiply_float(index: int, value: float):
-    check_code(rust.multiply_float(index, value))
+    wasm_call('multiply_float', index, value)
 
 def serialize():
-    check_code(rust.serialize())
-    return ctypes.string_at(rust.model_pointer(), rust.model_size())
+    wasm_call('serialize')
+    memory: wasmtime.Memory = instance.exports(store)['memory']
+    buffer = memory.read(
+        store,
+        wasm_get_atomic('model_pointer'),
+        wasm_get_atomic('model_size') + wasm_get_atomic('model_pointer'),
+    )
+    return bytes(buffer)

@@ -1,14 +1,25 @@
-import paraforge
+import os, subprocess
+from pathlib import Path
 
-paraforge.new_data_structure()
-print('Serialization #1:', paraforge.serialize())
+####################
+# Setup / Teardown #
+####################
 
-try:
-    print('Call with bad index: ', end='')
-    paraforge.multiply_float(4, 4.5)
-    print('Error: success') # This shoudn't succeed
-except Exception as e:
-    print(repr(e))
+def setup_module():
+    os.mkdir(Path(__file__).parent / 'test-temp')
+    os.chdir(Path(__file__).parent / 'test-temp')
+    os.symlink('../paraforge', 'paraforge')
 
-paraforge.multiply_float(0, 2.0)
-print('Serialization #2:', paraforge.serialize())
+#########
+# Tests #
+#########
+
+def test_demo():
+    result = subprocess.run([
+        'python', '-m', 'paraforge', '../test-files/first_model.pf.py', 'first_model',
+    ], capture_output=True)
+    
+    assert result.returncode == 0
+    
+    with open('../test-files/first_model.glb', 'rb') as f:
+        assert result.stdout == f.read()

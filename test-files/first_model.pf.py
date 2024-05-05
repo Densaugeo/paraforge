@@ -1,6 +1,6 @@
 from paraforge import *
 
-def model_first_model():
+def gen_first_model():
     red = Material('Red', '#f00', roughness=0.5)
     black = Material('Black', '#191919', roughness=0.5)
     

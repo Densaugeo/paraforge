@@ -1,0 +1,6 @@
+# This file causes rust to install the specified toolchain when the project is
+# first built. However, in order to actually *use* the toolchain, it must also
+# be specificed in an argument to cargo build
+
+[toolchain]
+targets = [ "wasm32-unknown-unknown" ]
