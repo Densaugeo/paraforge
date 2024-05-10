@@ -26,20 +26,27 @@ with open(f'{os.path.dirname(__file__)}/paraforge.wasm', 'rb') as f:
 instance = wasmtime.Instance(store, module, [])
 
 def wasm_call(function: str, *args):
-    return_code = instance.exports(store)[function](store, *args)
+    function = instance.exports(store)[function]
+    result = function(store, *args)
+    error_code = result & 0xffffffff
     
-    if return_code:
-        raise ParaforgeError(f'Code {return_code}: '
-            f'{ErrorCode(return_code).name}')
+    if error_code:
+        raise ParaforgeError(f'Code {error_code}: '
+            f'{ErrorCode(error_code).name}')
+    
+    # If the return value was i64, use the more significant bytes as an
+    # (unsigned) return value
+    if function.type(store).results[0] == wasmtime._types.ValType.i64():
+        return (result % 2**64) >> 32
 
 def wasm_get_atomic(function: str) -> int:
     return instance.exports(store)[function](store)
 
 def new_data_structure():
-    wasm_call('new_data_structure')
+    return wasm_call('new_data_structure')
 
 def multiply_float(index: int, value: float):
-    wasm_call('multiply_float', index, value)
+    return wasm_call('multiply_float', index, value)
 
 def serialize():
     wasm_call('serialize')

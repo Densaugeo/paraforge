@@ -1,5 +1,22 @@
 use std::sync::Mutex;
-use std::sync::atomic::{Ordering, AtomicU64};
+use std::sync::atomic::{Ordering, AtomicU32};
+
+static MODEL_POINTER: AtomicU32 = AtomicU32::new(0);
+static MODEL_SIZE: AtomicU32 = AtomicU32::new(0);
+static DATA_STRUCTURES: Mutex<Vec<DataStructure>> = Mutex::new(Vec::new());
+static GLTF_OUTPUT: Mutex<Vec<u8>> = Mutex::new(Vec::new());
+
+// WebAssembly is rumored to always be 32 bit, so assume that's the pointer size
+#[no_mangle]
+pub extern "C" fn model_pointer() -> u32 {
+  MODEL_POINTER.load(Ordering::Relaxed)
+}
+
+// WebAssembly is rumored to always be 32 bit, so assume that's the pointer size
+#[no_mangle]
+pub extern "C" fn model_size() -> u32 {
+  MODEL_SIZE.load(Ordering::Relaxed)
+}
 
 // These error codes are returned from WebAssembly functions, so must use a
 // WebAssembly variable type
@@ -21,23 +38,6 @@ pub enum ErrorCode {
   OutputNotGLB = 12,
 }
 
-static MODEL_POINTER: AtomicU64 = AtomicU64::new(0);
-static MODEL_SIZE: AtomicU64 = AtomicU64::new(0);
-static DATA_STRUCTURES: Mutex<Vec<DataStructure>> = Mutex::new(Vec::new());
-static GLTF_OUTPUT: Mutex<Vec<u8>> = Mutex::new(Vec::new());
-
-// WebAssembly is rumored to always be 32 bit, so assume that's the pointer size
-#[no_mangle]
-pub extern "C" fn model_pointer() -> u64 {
-  MODEL_POINTER.load(Ordering::Relaxed)
-}
-
-// WebAssembly is rumored to always be 32 bit, so assume that's the pointer size
-#[no_mangle]
-pub extern "C" fn model_size() -> u64 {
-  MODEL_SIZE.load(Ordering::Relaxed)
-}
-
 #[derive(Clone, serde::Serialize)]
 struct DataStructure {
   an_integer: i32,
@@ -56,14 +56,14 @@ impl DataStructure {
 }
 
 #[no_mangle]
-pub extern "C" fn new_data_structure() -> ErrorCode {
+pub extern "C" fn new_data_structure() -> u64 {
   let mut data_structures = match DATA_STRUCTURES.lock() {
     Ok(v) => v,
-    Err(_) => return ErrorCode::Mutex,
+    Err(_) => return ErrorCode::Mutex as u64,
   };
   
   data_structures.push(DataStructure::new());
-  ErrorCode::None
+  return ((data_structures.len() - 1) as u64) << 32
 }
 
 #[no_mangle]
@@ -73,10 +73,12 @@ pub extern "C" fn multiply_float(index: u32, value: f32) -> ErrorCode {
     Err(_) => return ErrorCode::Mutex,
   };
   
-  if data_structures.len() <= index as usize { return ErrorCode::Generation };
+  if data_structures.len() <= index as usize {
+    return ErrorCode::Generation;
+  }
   
   data_structures[index as usize].a_float *= value;
-  ErrorCode::None
+  return ErrorCode::None
 }
 
 #[no_mangle]
@@ -96,8 +98,8 @@ pub extern "C" fn serialize() -> ErrorCode {
       .unwrap();
   }
   
-  MODEL_POINTER.store(gltf_output.as_ptr() as u64, Ordering::Relaxed);
-  MODEL_SIZE.store(gltf_output.len() as u64, Ordering::Relaxed);
+  MODEL_POINTER.store(gltf_output.as_ptr() as u32, Ordering::Relaxed);
+  MODEL_SIZE.store(gltf_output.len() as u32, Ordering::Relaxed);
   
-  ErrorCode::None
+  return ErrorCode::None
 }
