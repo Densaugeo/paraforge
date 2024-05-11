@@ -116,10 +116,19 @@ version = "0.1.0"
 dependencies = [
  "base64",
  "nalgebra",
+ "paraforge-macros",
  "serde",
  "serde_json",
  "serde_repr",
  "serde_tuple",
+]
+
+[[package]]
+name = "paraforge-macros"
+version = "0.1.0"
+dependencies = [
+ "quote",
+ "syn 2.0.60",
 ]
 
 [[package]]

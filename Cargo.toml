@@ -13,3 +13,4 @@ serde_tuple = "0.5.0"
 serde_repr = "0.1.17"
 base64 = "0.21.5"
 nalgebra = "0.32.4"
+paraforge-macros = { path = "macros" }

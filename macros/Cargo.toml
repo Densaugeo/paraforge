@@ -1,0 +1,12 @@
+[package]
+name = "paraforge-macros"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+path = "src/macros.rs"
+crate-type = ["proc-macro"]
+
+[dependencies]
+syn = { version="2.0.38", features=["full", "extra-traits"] }
+quote = "1.0.33"
