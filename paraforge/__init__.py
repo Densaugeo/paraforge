@@ -19,6 +19,7 @@ class ErrorCode(enum.Enum):
     PointerTooLow = 13
     UnrecognizedErrorCode = 14
     HandleOutOfBounds = 15
+    NotInitialized = 16
 
 class ParaforgeError(Exception):
     def __init__(self, code: ErrorCode):
@@ -50,6 +51,9 @@ def wasm_call(function: str, *args):
         memory: wasmtime.Memory = instance.exports(store)['memory']
         return bytes(memory.read(store, tag, tag + value))
 
+def init():
+    return wasm_call('init')
+
 def new_data_structure():
     return wasm_call('new_data_structure')
 
@@ -58,3 +62,6 @@ def multiply_float(handle: int, value: float):
 
 def serialize():
     return wasm_call('serialize')
+
+def serialize_test():
+    return wasm_call('serialize_test')
