@@ -1,5 +1,7 @@
 use std::sync::{Mutex, MutexGuard};
 
+pub use nalgebra::Vector3 as V3;
+
 use paraforge_macros::ffi;
 
 /////////////
@@ -10,6 +12,7 @@ use paraforge_macros::ffi;
 // persistent data structres that can be modified across different FFI calls
 
 static DATA_STRUCTURES: Mutex<Vec<DataStructure>> = Mutex::new(Vec::new());
+static GEOMETRIES: Mutex<Vec<Geometry>> = Mutex::new(Vec::new());
 static GLTF_SOURCE: Mutex<Option<GLTF>> = Mutex::new(None);
 static GLTF_OUTPUT: Mutex<Vec<u8>> = Mutex::new(Vec::new());
 
@@ -97,9 +100,9 @@ pub enum ErrorCode {
 // on type aliases may be included in a future edition.
 type FFIResult<T> = Result<T, ErrorCode>;
 
-/////////////////////
-// Data Structures //
-/////////////////////
+//////////////////////////////
+// Non-GLTF Data Structures //
+//////////////////////////////
 
 #[derive(Clone, serde::Serialize)]
 struct DataStructure {
@@ -115,6 +118,281 @@ impl DataStructure {
       a_float: 1.2,
       a_string: String::from("Stringyyyyyy!"),
     }
+  }
+}
+
+pub enum SelectionType {
+  VERTICES,
+  TRIANGLES,
+}
+
+pub struct Geometry {
+  pub vertices: Vec<V3<f64>>,
+  
+  pub triangles: Vec<[u32; 3]>,
+  
+  pub selection: Vec<u32>,
+  pub selection_type: SelectionType,
+}
+
+impl Geometry {
+  /// Raw vertex byffer, suitable for GLTF packing
+  pub fn vertices_raw(&self) -> impl Iterator + '_ {
+    self.vertices.iter().flat_map(|v| vec![v[0] as f32, v[1] as f32,
+      v[2] as f32])
+  }
+  
+  /// Raw triangle byffer, suitable for GLTF packing
+  pub fn triangles_raw(&self) -> impl Iterator + '_ {
+    self.triangles.iter().flat_map(|v| {
+      if self.vertices.len() < 0x10000 {
+        return vec![
+          (v[0]     ) as u8,
+          (v[0] >> 8) as u8,
+          (v[1]     ) as u8,
+          (v[1] >> 8) as u8,
+          (v[2]     ) as u8,
+          (v[2] >> 8) as u8,
+        ]
+      } else {
+        return vec![
+          (v[0]      ) as u8,
+          (v[0] >>  8) as u8,
+          (v[0] >> 16) as u8,
+          (v[0] >> 24) as u8,
+          (v[1]      ) as u8,
+          (v[1] >>  8) as u8,
+          (v[1] >> 16) as u8,
+          (v[1] >> 24) as u8,
+          (v[2]      ) as u8,
+          (v[2] >>  8) as u8,
+          (v[2] >> 16) as u8,
+          (v[2] >> 24) as u8,
+        ]
+      }
+    })
+  }
+  
+  pub fn triangles_raw_component_type(&self) -> ComponentType {
+    if self.vertices.len() < 0x10000 {
+      ComponentType::UnsignedShort
+    } else {
+      ComponentType::UnsignedInt
+    }
+  }
+  
+  // Apply a translation
+  pub fn t(&mut self, x: f64, y: f64, z: f64) -> &mut Self {
+    let translation = V3::new(x, y, z);
+    
+    for vertex in &mut self.vertices {
+      *vertex += translation;
+    }
+    
+    self
+  }
+  
+  // Apply a scale
+  pub fn s(&mut self, x: f64, y: f64, z: f64) -> &mut Self {
+    let scale = V3::new(x, y, z);
+    
+    for vertex in &mut self.vertices {
+      vertex.component_mul_assign(&scale);
+    }
+    
+    self
+  }
+  
+  // rotations / matrices
+  
+  // Merges
+  
+  // Vertex deduplication
+  
+  /// Returns a list of vertices within the bounding box defined by the given
+  /// points. Allows error of 1e-6
+  pub fn select_vertices(&mut self, bound_1: V3<f64>, bound_2: V3<f64>) {
+    self.selection.drain(..);
+    self.selection_type = SelectionType::VERTICES;
+    
+    let lower_bound = bound_1.inf(&bound_2) - V3::new(1e-6, 1e-6, 1e-6);
+    let upper_bound = bound_1.sup(&bound_2) + V3::new(1e-6, 1e-6, 1e-6);
+    
+    for i in 0..self.vertices.len() {
+      if lower_bound[0] < self.vertices[i][0] &&
+         self.vertices[i][0] < upper_bound[0] &&
+         lower_bound[1] < self.vertices[i][1] &&
+         self.vertices[i][1] < upper_bound[1] &&
+         lower_bound[2] < self.vertices[i][2] &&
+         self.vertices[i][2] < upper_bound[2] {
+        self.selection.push(i as u32);
+      }
+    }
+  }
+  
+  /// Returns a list of triangles within the bounding box defined by the given
+  /// points. Allows error of 1e-6
+  pub fn select_triangles(&mut self, bound_1: V3<f64>, bound_2: V3<f64>) {
+    self.select_vertices(bound_1, bound_2);
+    let bounded_vertices = self.selection.clone();
+    
+    self.selection.drain(..);
+    self.selection_type = SelectionType::TRIANGLES;
+    
+    for i in 0..self.triangles.len() {
+      if bounded_vertices.contains(&self.triangles[i][0]) &&
+         bounded_vertices.contains(&self.triangles[i][1]) &&
+         bounded_vertices.contains(&self.triangles[i][2]) {
+        self.selection.push(i as u32);
+      }
+    }
+  }
+  
+  /// Automatically deletes affected triangles
+  pub fn delete_vertex(&mut self, vertex: u32) {
+    // Swap remove to avoid having to shift vertices
+    self.vertices.swap_remove(vertex as usize);
+    let swapped_vertex = self.vertices.len() as u32;
+    
+    for i in 0..self.triangles.len() {
+      // Delete triangle if it includes deleted vertex
+      if self.triangles[i].contains(&vertex) {
+        self.triangles.swap_remove(i);
+        continue;
+      }
+      
+      // Update indices if swapped vertex is referenced
+      for j in 0..2 {
+        if self.triangles[i][j] == swapped_vertex {
+          self.triangles[i][j] = vertex
+        }
+      }
+    }
+    
+    self.selection.drain(..);
+  }
+  
+  /// Automatically deletes affected triangles
+  pub fn delete_vertices(&mut self) {
+    // Vertices must be processed in reverse order, because deletion of lower-
+    // index vertices can change the index of higher-index vertices
+    self.selection.sort_unstable();
+    self.selection.reverse();
+    
+    for vertex in self.selection.clone() {
+      self.delete_vertex(vertex);
+    }
+  }
+  
+  pub fn delete_triangle(&mut self, triangle: u32) {
+    self.triangles.swap_remove(triangle as usize);
+    self.selection.drain(..);
+  }
+  
+  pub fn delete_triangles(&mut self) {
+    // Triangles must be processed in reverse order, because deletion of lower-
+    // index vertices can change the index of higher-index vertices
+    self.selection.sort_unstable();
+    self.selection.reverse();
+    
+    for triangle in self.selection.clone() {
+      self.delete_triangle(triangle);
+    }
+  }
+  
+  pub fn delete_stray_vertices(&mut self) {
+    // Vertices must be processed in reverse order, because deletion of lower-
+    // index vertices can change the index of higher-index vertices
+    for vertex in self.vertices.len()..0 {
+      let mut vertex_used = false;
+      for triangle in &self.triangles {
+        if triangle.contains(&(vertex as u32)) {
+          vertex_used = true;
+        }
+      }
+      
+      if vertex_used {
+        self.delete_vertex(vertex as u32);
+      }
+    }
+  }
+  
+  pub fn cube() -> Self {
+    Self {
+      vertices: vec![
+        V3::new(-1.0,  1.0, -1.0),
+        V3::new(-1.0,  1.0,  1.0),
+        
+        V3::new(-1.0, -1.0, -1.0),
+        V3::new(-1.0, -1.0,  1.0),
+        
+        V3::new( 1.0,  1.0, -1.0),
+        V3::new( 1.0,  1.0,  1.0),
+        
+        V3::new( 1.0, -1.0, -1.0),
+        V3::new( 1.0, -1.0,  1.0),
+      ],
+      triangles: vec![
+        // Top
+        [1, 3, 5],
+        [3, 7, 5],
+        
+        // +X side
+        [4, 5, 6],
+        [5, 7, 6],
+        
+        // -X side
+        [0, 2, 1],
+        [1, 2, 3],
+        
+        // +Y side
+        [0, 1, 4],
+        [1, 5, 4],
+        
+        // -Y side
+        [2, 6, 3],
+        [3, 6, 7],
+        
+        // Bottom
+        [0, 4, 2],
+        [2, 4, 6],
+      ],
+      selection: Vec::new(),
+      selection_type: SelectionType::VERTICES,
+    }
+  }
+  
+  // Use self instead of &self to cause a move, because this struct should not
+  // be used again after packing
+  pub fn pack(self, gltf: &mut GLTF) -> MeshPrimitive {
+    // Calculate vertex bounds. The vertex bounds are f32 because that is the
+    // same precision as GLTF vertices
+    let mut min = V3::repeat(f32::MAX);
+    let mut max = V3::repeat(f32::MIN);
+    for vertex in &self.vertices {
+      let vertex = V3::new(vertex.x as f32, vertex.y as f32, vertex.z as f32);
+      min = min.inf(&vertex);
+      max = max.sup(&vertex);
+    }
+    
+    gltf.append_to_glb_bin(self.vertices_raw(), Type::VEC3,
+      ComponentType::Float);
+    // Can .unwrap() because the previous .append_to_glb_bin() call guarantees
+    // .accessors/min/max will be populated
+    gltf.accessors.last_mut().unwrap().min.extend_from_slice(min.as_slice());
+    gltf.accessors.last_mut().unwrap().max.extend_from_slice(max.as_slice());
+    gltf.buffer_views.last_mut().unwrap().target = Some(
+      Target::ArrayBuffer);
+    
+    gltf.append_to_glb_bin(self.triangles_raw(), Type::SCALAR,
+      self.triangles_raw_component_type());
+    gltf.buffer_views.last_mut().unwrap().target = Some(
+      Target::ElementArrayBuffer);
+    
+    let mut result = MeshPrimitive::new();
+    result.attributes.position = Some(gltf.accessors.len() as u32 - 2);
+    result.indices = Some(gltf.accessors.len() as u32 - 1);
+    result
   }
 }
 
@@ -221,6 +499,80 @@ impl GLTF {
       glb_bin: Vec::new(),
     }
   }
+  
+  pub fn append_to_glb_bin(&mut self, buffer: impl IntoIterator,
+  type_: Type, component_type: ComponentType) {
+    let mut bytes = 0;
+    for value in buffer.into_iter() {
+      let sliced = unsafe { any_as_u8_slice(&value) };
+      self.glb_bin.extend_from_slice(sliced);
+      bytes += sliced.len() as u32;
+    }
+    self.buffers[0].byte_length += bytes;
+    
+    let mut buffer_view = BufferView::new("");
+    buffer_view.buffer = 0;
+    buffer_view.byte_length = bytes;
+    buffer_view.byte_offset = (self.glb_bin.len() as u32) - bytes;
+    self.buffer_views.push(buffer_view);
+    
+    let mut accessor = Accessor::new("");
+    accessor.buffer_view = Some((self.buffer_views.len() - 1) as u32);
+    accessor.type_ = type_;
+    accessor.component_type = component_type;
+    accessor.count = bytes/type_.component_count()/component_type.byte_count();
+    self.accessors.push(accessor);
+  }
+  
+  /// Creates a new node and adds it to the specified scene. If unsure, use
+  /// scene 0
+  pub fn new_root_node<S: Into<String>>(&mut self, scene: u32, name: S) ->
+  *mut Node {
+    let index = self.nodes.len() as u32;
+    self.scenes[scene as usize].nodes.push(index);
+    self.nodes.push(Node::new(name));
+    self.nodes.last_mut().unwrap()
+  }
+  
+  /// Creates a new node and adds it to the specified node
+  pub fn new_node<S: Into<String>>(&mut self, node: u32, name: S) -> &mut Node {
+    let index = self.nodes.len() as u32;
+    self.nodes[node as usize].children.push(index);
+    self.nodes.push(Node::new(name));
+    self.nodes.last_mut().unwrap()
+  }
+  
+  /// Creates a new mesh and adds it to the specified node
+  pub fn new_mesh<S: Into<String>>(&mut self, node: u32, name: S) -> &mut Mesh {
+  let index = self.meshes.len() as u32;
+    self.nodes[node as usize].mesh = Some(index);
+    self.meshes.push(Mesh::new(name));
+    self.meshes.last_mut().unwrap()
+  }
+  
+  pub fn new_material<S: Into<String>>(&mut self, name: S) -> &mut Material {
+    self.materials.push(Material::new(name));
+    
+    // .unwrap() here doesn't unwrap .material, but instead unwraps the result
+    // of calling .as_mut(), and is permissible because .material is guaranteed
+    // to have a value after the previous line
+    self.materials.last_mut().unwrap()
+  }
+}
+
+// WARNING: Do not edit!
+//
+// Found this function here:
+// https://stackoverflow.com/questions/28127165/how-to-convert-struct-to-u8
+//
+// Getting something into raw bytes in Rust is absurdly overcomplicated. Code
+// that does this is densely packed with subtle dangers, hidden complications,
+// and unpleasant surprises. Do not attempt to edit it.
+unsafe fn any_as_u8_slice<T: Sized>(p: &T) -> &[u8] {
+  ::core::slice::from_raw_parts(
+    (p as *const T) as *const u8,
+    ::core::mem::size_of::<T>(),
+  )
 }
 
 #[derive(Clone, serde::Serialize)]
@@ -694,6 +1046,22 @@ pub struct Accessor {
    *  pub extras: ??,*/
 }
 
+impl Accessor {
+  pub fn new<S: Into<String>>(name: S) -> Self {
+    Self {
+      name: name.into(),
+      buffer_view: None,
+      byte_offset: 0,
+      component_type: ComponentType::Byte,
+      normalized: false,
+      count: 0,
+      type_: Type::SCALAR,
+      min: Vec::new(),
+      max: Vec::new(),
+    }
+  }
+}
+
 fn is_default_byte_offset(value: &u32) -> bool {
   *value == 0
 }
@@ -817,6 +1185,53 @@ fn serialize_test() -> FFIResult<FatPointer> {
   }
   
   return FatPointer::try_from(gltf_output);
+}
+
+#[ffi]
+fn gen_test() -> FFIResult<()> {
+  // This lock must be saved in a variable before it can be used.
+  // (lock(&GLTF_SOURCE)?).as_ref()... does not compile. This snippet cannot be
+  // wrapped in a function
+  let mut gltf_source_option = lock(&GLTF_SOURCE)?;
+  let mut gltf_source = gltf_source_option.as_mut().ok_or(
+    ErrorCode::NotInitialized)?;
+  
+  let node = gltf_source.nodes.len() as u32;
+  gltf_source.new_root_node(0, "Fortress Wall Battlement");
+  
+  let mesh = gltf_source.meshes.len();
+  gltf_source.new_mesh(node, "Fortress Wall Battlement");
+  
+  let red = gltf_source.materials.len() as u32;
+  gltf_source.new_material("Red");
+  gltf_source.materials[red as usize].pbr_metallic_roughness = PBRMetallicRoughness {
+    metallic_factor: 0.0,
+    roughness_factor: 0.5,
+    base_color_factor: Color4 { r: 1.0, g: 0.0, b: 0.0, a: 1.0 },
+  };
+  
+  let black = gltf_source.materials.len() as u32;
+  gltf_source.new_material("Black");
+  gltf_source.materials[black as usize].pbr_metallic_roughness = PBRMetallicRoughness {
+    metallic_factor: 0.0,
+    roughness_factor: 0.5,
+    base_color_factor: Color4 { r: 0.1, g: 0.1, b: 0.1, a: 1.0 },
+  };
+  
+  let mut red_block = Geometry::cube();
+  red_block.s(1.0, 0.25, 0.3).t(0.0, -0.75, 4.1);
+  let red_submesh = red_block.pack(&mut gltf_source);
+  gltf_source.meshes[mesh].copy_primitive(red_submesh).material(red);
+  
+  let mut black_block = Geometry::cube();
+  black_block.s(0.5, 0.25, 0.3).t(0.0, -0.75, 4.7);
+  black_block.select_triangles(V3::new(-10.0, -10.0, 4.3),
+    V3::new(10.0, 10.0, 4.5));
+  black_block.delete_triangles();
+  let black_submesh = black_block.pack(&mut gltf_source);
+  gltf_source.meshes[mesh].copy_primitive(black_submesh).material(black);
+  
+  Ok(())
 }
 
 struct DryRunWriter {

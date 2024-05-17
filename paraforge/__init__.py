@@ -63,5 +63,8 @@ def multiply_float(handle: int, value: float):
 def serialize():
     return wasm_call('serialize')
 
+def gen_test():
+    return wasm_call('gen_test')
+
 def serialize_test():
     return wasm_call('serialize_test')
