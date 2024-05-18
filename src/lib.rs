@@ -13,6 +13,8 @@ use paraforge_macros::ffi;
 
 static DATA_STRUCTURES: Mutex<Vec<DataStructure>> = Mutex::new(Vec::new());
 static GEOMETRIES: Mutex<Vec<Geometry>> = Mutex::new(Vec::new());
+static STRING_TRANSPORT: Mutex<[Vec<u8>; 4]> = Mutex::new([vec![], vec![],
+  vec![], vec![]]);
 static GLTF_SOURCE: Mutex<Option<GLTF>> = Mutex::new(None);
 static GLTF_OUTPUT: Mutex<Vec<u8>> = Mutex::new(Vec::new());
 
@@ -21,6 +23,31 @@ fn lock<'a, T>(mutex: &'a Mutex<T>) -> Result<MutexGuard<'a, T>, ErrorCode> {
     Ok(value) => return Ok(value),
     Err(_) => return Err(ErrorCode::Mutex),
   }
+}
+
+fn get_string_transport(handle: usize) -> FFIResult<String> {
+  let string_transport = lock(&STRING_TRANSPORT)?;
+  
+  if handle >= 4 { return Err(ErrorCode::HandleOutOfBounds) };
+  
+  match String::from_utf8(string_transport[handle].clone()) {
+    Ok(value) => return Ok(value),
+    Err(_) => return Err(ErrorCode::UnicodeError),
+  }
+}
+
+#[ffi]
+fn string_transport(handle: usize, size: usize) -> FFIResult<FatPointer> {
+  let mut string_transport = lock(&STRING_TRANSPORT)?;
+  
+  if handle >= 4 { return Err(ErrorCode::HandleOutOfBounds) };
+  
+  if size != 0xffffffff {
+    if size > 64 { return Err(ErrorCode::SizeOutOfBounds) };
+    string_transport[handle].resize(size, 0);
+  }
+  
+  return FatPointer::try_from(&string_transport[handle]);
 }
 
 ////////////////////
@@ -43,10 +70,10 @@ pub struct FatPointer {
   size: usize,
 }
 
-impl TryFrom<MutexGuard<'_, Vec<u8>>> for FatPointer {
+impl TryFrom<&Vec<u8>> for FatPointer {
   type Error = ErrorCode;
   
-  fn try_from(value: MutexGuard<'_, Vec<u8>>) -> Result<Self, ErrorCode> {
+  fn try_from(value: &Vec<u8>) -> Result<Self, ErrorCode> {
     let offset = value.as_ptr() as usize;
     let size = value.len();
     
@@ -86,6 +113,8 @@ pub enum ErrorCode {
   UnrecognizedErrorCode = 14,
   HandleOutOfBounds = 15,
   NotInitialized = 16,
+  SizeOutOfBounds = 17,
+  UnicodeError = 18,
 }
 
 // Any value type T used inside an FFIResult should implement FFIValue, but
@@ -1184,7 +1213,30 @@ fn serialize_test() -> FFIResult<FatPointer> {
       .unwrap();
   }
   
-  return FatPointer::try_from(gltf_output);
+  return FatPointer::try_from(gltf_output.as_ref());
+}
+
+#[ffi]
+fn new_material(r: f64, g: f64, b: f64, a: f64, metallicity: f64,
+roughness: f64) -> FFIResult<usize> {
+  let name = get_string_transport(0)?;
+  
+  // This lock must be saved in a variable before it can be used.
+  // (lock(&GLTF_SOURCE)?).as_ref()... does not compile. This snippet cannot be
+  // wrapped in a function
+  let mut gltf_source_option = lock(&GLTF_SOURCE)?;
+  let gltf_source = gltf_source_option.as_mut().ok_or(
+    ErrorCode::NotInitialized)?;
+  
+  let handle = gltf_source.materials.len();
+  gltf_source.materials.push(Material::new(name));
+  gltf_source.materials[handle].pbr_metallic_roughness = PBRMetallicRoughness {
+    metallic_factor: metallicity,
+    roughness_factor: roughness,
+    base_color_factor: Color4 { r, g, b, a },
+  };
+  
+  return Ok(handle);
 }
 
 #[ffi]
@@ -1202,21 +1254,8 @@ fn gen_test() -> FFIResult<()> {
   let mesh = gltf_source.meshes.len();
   gltf_source.new_mesh(node, "Fortress Wall Battlement");
   
-  let red = gltf_source.materials.len() as u32;
-  gltf_source.new_material("Red");
-  gltf_source.materials[red as usize].pbr_metallic_roughness = PBRMetallicRoughness {
-    metallic_factor: 0.0,
-    roughness_factor: 0.5,
-    base_color_factor: Color4 { r: 1.0, g: 0.0, b: 0.0, a: 1.0 },
-  };
-  
-  let black = gltf_source.materials.len() as u32;
-  gltf_source.new_material("Black");
-  gltf_source.materials[black as usize].pbr_metallic_roughness = PBRMetallicRoughness {
-    metallic_factor: 0.0,
-    roughness_factor: 0.5,
-    base_color_factor: Color4 { r: 0.1, g: 0.1, b: 0.1, a: 1.0 },
-  };
+  let red = 0u32;
+  let black = 1u32;
   
   let mut red_block = Geometry::cube();
   red_block.s(1.0, 0.25, 0.3).t(0.0, -0.75, 4.1);
@@ -1312,5 +1351,5 @@ fn serialize() -> FFIResult<FatPointer> {
   
   gltf_output.shrink_to_fit();
   
-  return FatPointer::try_from(gltf_output);
+  return FatPointer::try_from(gltf_output.as_ref());
 }

@@ -25,8 +25,10 @@ pub fn ffi(
   input_fn.sig.ident = private_name.clone();
   
   let expected_argument_types: Vec<syn::Type> = vec![
+    syn::parse_str("usize").unwrap(), // Identical to u32 per WebAssembly spec
     syn::parse_str("u32").unwrap(),
     syn::parse_str("u64").unwrap(),
+    syn::parse_str("isize").unwrap(), // Identical to i32 per WebAssembly spec
     syn::parse_str("i32").unwrap(),
     syn::parse_str("i64").unwrap(),
     syn::parse_str("f32").unwrap(),
