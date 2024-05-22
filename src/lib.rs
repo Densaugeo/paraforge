@@ -13,6 +13,7 @@ use paraforge_macros::ffi;
 
 static DATA_STRUCTURES: Mutex<Vec<DataStructure>> = Mutex::new(Vec::new());
 static GEOMETRIES: Mutex<Vec<Geometry>> = Mutex::new(Vec::new());
+static MESH_PRIMS: Mutex<Vec<MeshPrimitive>> = Mutex::new(Vec::new());
 static STRING_TRANSPORT: Mutex<[Vec<u8>; 4]> = Mutex::new([vec![], vec![],
   vec![], vec![]]);
 static GLTF_SOURCE: Mutex<Option<GLTF>> = Mutex::new(None);
@@ -391,9 +392,7 @@ impl Geometry {
     }
   }
   
-  // Use self instead of &self to cause a move, because this struct should not
-  // be used again after packing
-  pub fn pack(self, gltf: &mut GLTF) -> MeshPrimitive {
+  pub fn pack(&self, gltf: &mut GLTF) -> MeshPrimitive {
     // Calculate vertex bounds. The vertex bounds are f32 because that is the
     // same precision as GLTF vertices
     let mut min = V3::repeat(f32::MAX);
@@ -1240,7 +1239,119 @@ roughness: f64) -> FFIResult<usize> {
 }
 
 #[ffi]
-fn gen_test() -> FFIResult<()> {
+fn add_node_to_scene(scene: usize) -> FFIResult<usize> {
+  // This lock must be saved in a variable before it can be used.
+  // (lock(&GLTF_SOURCE)?).as_ref()... does not compile. This snippet cannot be
+  // wrapped in a function
+  let mut gltf_source_option = lock(&GLTF_SOURCE)?;
+  let gltf_source = gltf_source_option.as_mut().ok_or(
+    ErrorCode::NotInitialized)?;
+  
+  if scene >= gltf_source.scenes.len() {
+    return Err(ErrorCode::HandleOutOfBounds);
+  }
+  
+  gltf_source.new_root_node(scene as u32, "Fortress Wall Battlement");
+  return Ok(gltf_source.nodes.len() - 1);
+}
+
+#[ffi]
+fn add_mesh_to_node(node: usize) -> FFIResult<usize> {
+  let name = get_string_transport(0)?;
+  
+  // This lock must be saved in a variable before it can be used.
+  // (lock(&GLTF_SOURCE)?).as_ref()... does not compile. This snippet cannot be
+  // wrapped in a function
+  let mut gltf_source_option = lock(&GLTF_SOURCE)?;
+  let gltf_source = gltf_source_option.as_mut().ok_or(
+    ErrorCode::NotInitialized)?;
+    
+    if node >= gltf_source.nodes.len() {
+      return Err(ErrorCode::HandleOutOfBounds);
+    }
+    
+    gltf_source.new_mesh(node as u32, name);
+    return Ok(gltf_source.nodes.len() - 1);
+}
+
+#[ffi]
+fn add_primitive_to_mesh(mesh: usize, packed_geometry: usize, material: usize)
+-> FFIResult<usize> {
+  // This lock must be saved in a variable before it can be used.
+  // (lock(&GLTF_SOURCE)?).as_ref()... does not compile. This snippet cannot be
+  // wrapped in a function
+  let mut gltf_source_option = lock(&GLTF_SOURCE)?;
+  let gltf_source = gltf_source_option.as_mut().ok_or(
+    ErrorCode::NotInitialized)?;
+  
+  if mesh >= gltf_source.meshes.len() {
+    return Err(ErrorCode::HandleOutOfBounds);
+  }
+  if material >= gltf_source.materials.len() {
+    return Err(ErrorCode::HandleOutOfBounds);
+  }
+  
+  let mesh_prims = lock(&MESH_PRIMS)?;
+  if packed_geometry >= mesh_prims.len() {
+    return Err(ErrorCode::HandleOutOfBounds);
+  }
+  
+  gltf_source.meshes[mesh]
+    .copy_primitive(mesh_prims[packed_geometry])
+    .material(material as u32);
+  return Ok(gltf_source.meshes[mesh].primitives.len() - 1);
+}
+
+#[ffi]
+fn new_geometry_cube() -> FFIResult<usize> {
+  let mut geometries = lock(&GEOMETRIES)?;
+  geometries.push(Geometry::cube());
+  return Ok(geometries.len() - 1);
+}
+
+#[ffi]
+fn geometry_translate(handle: usize, x: f64, y: f64, z: f64) -> FFIResult<()> {
+  let mut geometries = lock(&GEOMETRIES)?;
+  if handle >= geometries.len() { return Err(ErrorCode::HandleOutOfBounds) };
+  
+  geometries[handle].t(x, y, z);
+  
+  Ok(())
+}
+
+#[ffi]
+fn geometry_scale(handle: usize, x: f64, y: f64, z: f64) -> FFIResult<()> {
+  let mut geometries = lock(&GEOMETRIES)?;
+  if handle >= geometries.len() { return Err(ErrorCode::HandleOutOfBounds) };
+  
+  geometries[handle].s(x, y, z);
+  
+  Ok(())
+}
+
+#[ffi]
+fn geometry_select_triangles(handle: usize, x1: f64, y1: f64, z1: f64, x2: f64,
+y2: f64, z2: f64) -> FFIResult<()> {
+  let mut geometries = lock(&GEOMETRIES)?;
+  if handle >= geometries.len() { return Err(ErrorCode::HandleOutOfBounds) };
+  
+  geometries[handle].select_triangles(V3::new(x1, y1, z1), V3::new(x2, y2, z2));
+  
+  Ok(())
+}
+
+#[ffi]
+fn geometry_delete_triangles(handle: usize) -> FFIResult<()> {
+  let mut geometries = lock(&GEOMETRIES)?;
+  if handle >= geometries.len() { return Err(ErrorCode::HandleOutOfBounds) };
+  
+  geometries[handle].delete_triangles();
+  
+  Ok(())
+}
+
+#[ffi]
+fn geometry_pack(handle: usize) -> FFIResult<usize> {
   // This lock must be saved in a variable before it can be used.
   // (lock(&GLTF_SOURCE)?).as_ref()... does not compile. This snippet cannot be
   // wrapped in a function
@@ -1248,29 +1359,12 @@ fn gen_test() -> FFIResult<()> {
   let mut gltf_source = gltf_source_option.as_mut().ok_or(
     ErrorCode::NotInitialized)?;
   
-  let node = gltf_source.nodes.len() as u32;
-  gltf_source.new_root_node(0, "Fortress Wall Battlement");
+  let geometries = lock(&GEOMETRIES)?;
+  if handle >= geometries.len() { return Err(ErrorCode::HandleOutOfBounds) };
+  let mut mesh_prims = lock(&MESH_PRIMS)?;
   
-  let mesh = gltf_source.meshes.len();
-  gltf_source.new_mesh(node, "Fortress Wall Battlement");
-  
-  let red = 0u32;
-  let black = 1u32;
-  
-  let mut red_block = Geometry::cube();
-  red_block.s(1.0, 0.25, 0.3).t(0.0, -0.75, 4.1);
-  let red_submesh = red_block.pack(&mut gltf_source);
-  gltf_source.meshes[mesh].copy_primitive(red_submesh).material(red);
-  
-  let mut black_block = Geometry::cube();
-  black_block.s(0.5, 0.25, 0.3).t(0.0, -0.75, 4.7);
-  black_block.select_triangles(V3::new(-10.0, -10.0, 4.3),
-    V3::new(10.0, 10.0, 4.5));
-  black_block.delete_triangles();
-  let black_submesh = black_block.pack(&mut gltf_source);
-  gltf_source.meshes[mesh].copy_primitive(black_submesh).material(black);
-  
-  Ok(())
+  mesh_prims.push(geometries[handle].pack(&mut gltf_source));
+  return Ok(mesh_prims.len() - 1);
 }
 
 struct DryRunWriter {
