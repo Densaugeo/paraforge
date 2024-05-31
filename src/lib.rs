@@ -512,7 +512,7 @@ pub struct GLTF {
 
 impl GLTF {
   pub fn new() -> Self {
-    let scene = Scene::new("");
+    let scene = Scene::new("A name for a scene");
     
     Self {
       asset: Asset::new(),

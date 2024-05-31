@@ -16,7 +16,8 @@ def setup_module():
 
 def test_demo():
     result = subprocess.run([
-        'python', '-m', 'paraforge', '../test-files/first_model.pf.py', 'first_model',
+        #'python', '-m', 'paraforge', '../test-files/first_model.pf.py', 'first_model',
+        'python', '-m', 'paraforge', '../dummy-model.pf.py', 'first_model',
     ], capture_output=True)
     
     assert result.returncode == 0

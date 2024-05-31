@@ -1,6 +1,6 @@
 import paraforge
 
-def gen_dummy():
+def gen_first_model():
     node_handle = paraforge.add_node_to_scene(0, 'Fortress Wall Battlement')
     mesh_handle = paraforge.add_mesh_to_node(node_handle,
         'Fortress Wall Battlement')
