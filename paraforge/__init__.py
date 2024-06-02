@@ -33,7 +33,64 @@ with open(f'{os.path.dirname(__file__)}/paraforge.wasm', 'rb') as f:
 instance = wasmtime.Instance(store, module, [])
 
 
+class Node:
+    @property
+    def name(self): return self._name
+    @property
+    def handle(self): return self._handle
+
+    def __init__(self, name: str = ''):
+        assert len(name) <= 64
+        
+        self._name = name
+        
+        self._handle = add_node_to_scene(0, self._name)
+
+
+class Mesh:
+    @property
+    def name(self): return self._name
+    @property
+    def node(self): return self._node
+    @property
+    def handle(self): return self._handle
+    
+    def __init__(self, node: Node, name: str = ''):
+        assert len(name) <= 64
+        
+        self._name = name
+        self._node = node
+        
+        self._handle = add_mesh_to_node(self._node.handle, self._name)
+    
+    def add(self, mesh_primitive: 'MeshPrimitive', material: 'Material'):
+        add_primitive_to_mesh(self._handle, mesh_primitive.handle,
+            material.handle)
+
+
+class MeshPrimitive():
+    @property
+    def handle(self): return self._handle
+
+
 class Material:
+    @property
+    def name(self): return self._name
+    @property
+    def r(self): return self._r
+    @property
+    def g(self): return self._g
+    @property
+    def b(self): return self._b
+    @property
+    def a(self): return self._a
+    @property
+    def metallicity(self): return self._metallicity
+    @property
+    def roughness(self): return self._roughness
+    @property
+    def handle(self): return self._handle
+    
     def __init__(self,
         name: str = '',
         color_string: str = '',
@@ -77,23 +134,44 @@ class Material:
         
         self._handle = new_material(self._name, self._r, self._g, self._b,
             self._a, self._metallicity, self._roughness)
+
+
+class Geometry:
+    def Cube() -> 'Geometry':
+        result = Geometry()
+        result._handle = new_geometry_cube()
+        return result
     
     @property
-    def name(self): return self._name
-    @property
-    def r(self): return self._r
-    @property
-    def g(self): return self._g
-    @property
-    def b(self): return self._b
-    @property
-    def a(self): return self._a
-    @property
-    def metallicity(self): return self._metallicity
-    @property
-    def roughness(self): return self._roughness
-    @property
     def handle(self): return self._handle
+    
+    def t(self, x: float, y: float, z: float) -> 'Geometry':
+        return self.translate(x, y, z)
+    
+    def translate(self, x: float, y: float, z: float) -> 'Geometry':
+        geometry_translate(self._handle, x, y, z)
+        return self
+    
+    def s(self, x: float, y: float, z: float) -> 'Geometry':
+        return self.scale(x, y, z)
+    
+    def scale(self, x: float, y: float, z: float) -> 'Geometry':
+        geometry_scale(self._handle, x, y, z)
+        return self
+    
+    def select_triangles(self, x1: float, y1: float, z1: float, x2: float,
+    y2: float, z2: float):
+        geometry_select_triangles(self._handle, x1, y1, z1, x2, y2, z2)
+        return self
+    
+    def delete_triangles(self):
+        geometry_delete_triangles(self._handle)
+        return self
+    
+    def pack(self) -> MeshPrimitive:
+        result = MeshPrimitive()
+        result._handle = geometry_pack(self._handle)
+        return result
 
 
 def read_string(handle: int) -> str:
@@ -152,7 +230,8 @@ def add_mesh_to_node(node: int, name: str) -> int:
     write_string(0, name)
     return wasm_call('add_mesh_to_node', node)
 
-def mesh_add_primitive(mesh: int, packed_geometry: int, material: int) -> int:
+def add_primitive_to_mesh(mesh: int, packed_geometry: int, material: int,
+) -> int:
     return wasm_call('add_primitive_to_mesh', mesh, packed_geometry, material)
 
 def new_geometry_cube() -> int:
