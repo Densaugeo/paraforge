@@ -13,7 +13,7 @@ use paraforge_macros::ffi;
 
 static DATA_STRUCTURES: Mutex<Vec<DataStructure>> = Mutex::new(Vec::new());
 static GEOMETRIES: Mutex<Vec<Geometry>> = Mutex::new(Vec::new());
-static MESH_PRIMS: Mutex<Vec<MeshPrimitive>> = Mutex::new(Vec::new());
+static PACKED_GEOMETRIES: Mutex<Vec<PackedGeometry>> = Mutex::new(Vec::new());
 static STRING_TRANSPORT: Mutex<[Vec<u8>; 4]> = Mutex::new([vec![], vec![],
   vec![], vec![]]);
 static GLTF_SOURCE: Mutex<Option<GLTF>> = Mutex::new(None);
@@ -392,7 +392,7 @@ impl Geometry {
     }
   }
   
-  pub fn pack(&self, gltf: &mut GLTF) -> MeshPrimitive {
+  pub fn pack(&self, gltf: &mut GLTF) -> PackedGeometry {
     // Calculate vertex bounds. The vertex bounds are f32 because that is the
     // same precision as GLTF vertices
     let mut min = V3::repeat(f32::MAX);
@@ -417,11 +417,16 @@ impl Geometry {
     gltf.buffer_views.last_mut().unwrap().target = Some(
       Target::ElementArrayBuffer);
     
-    let mut result = MeshPrimitive::new();
-    result.attributes.position = Some(gltf.accessors.len() as u32 - 2);
-    result.indices = Some(gltf.accessors.len() as u32 - 1);
-    result
+    return PackedGeometry {
+      vertex_buffer: gltf.accessors.len() as u32 - 2,
+      triangle_buffer: gltf.accessors.len() as u32 - 1,
+    }
   }
+}
+
+pub struct PackedGeometry {
+  vertex_buffer: u32,
+  triangle_buffer: u32,
 }
 
 /////////////////////////
@@ -1291,14 +1296,17 @@ fn add_primitive_to_mesh(mesh: usize, packed_geometry: usize, material: usize)
     return Err(ErrorCode::HandleOutOfBounds);
   }
   
-  let mesh_prims = lock(&MESH_PRIMS)?;
-  if packed_geometry >= mesh_prims.len() {
+  let packed_geometries = lock(&PACKED_GEOMETRIES)?;
+  if packed_geometry >= packed_geometries.len() {
     return Err(ErrorCode::HandleOutOfBounds);
   }
   
-  gltf_source.meshes[mesh]
-    .copy_primitive(mesh_prims[packed_geometry])
-    .material(material as u32);
+  let mut prim = MeshPrimitive::new();
+  prim.attributes.position = Some(packed_geometries[packed_geometry]
+    .vertex_buffer);
+  prim.indices = Some(packed_geometries[packed_geometry].triangle_buffer);
+  prim.material = Some(material as u32);
+  gltf_source.meshes[mesh].primitives.push(prim);
   return Ok(gltf_source.meshes[mesh].primitives.len() - 1);
 }
 
@@ -1361,10 +1369,10 @@ fn geometry_pack(handle: usize) -> FFIResult<usize> {
   
   let geometries = lock(&GEOMETRIES)?;
   if handle >= geometries.len() { return Err(ErrorCode::HandleOutOfBounds) };
-  let mut mesh_prims = lock(&MESH_PRIMS)?;
+  let mut packed_geometries = lock(&PACKED_GEOMETRIES)?;
   
-  mesh_prims.push(geometries[handle].pack(&mut gltf_source));
-  return Ok(mesh_prims.len() - 1);
+  packed_geometries.push(geometries[handle].pack(&mut gltf_source));
+  return Ok(packed_geometries.len() - 1);
 }
 
 struct DryRunWriter {

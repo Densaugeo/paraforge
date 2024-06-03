@@ -38,13 +38,16 @@ class Node:
     def name(self): return self._name
     @property
     def handle(self): return self._handle
-
+    
     def __init__(self, name: str = ''):
         assert len(name) <= 64
         
         self._name = name
         
         self._handle = add_node_to_scene(0, self._name)
+    
+    def add_mesh(self, name: str = ''):
+        return Mesh(self, name)
 
 
 class Mesh:
@@ -63,12 +66,13 @@ class Mesh:
         
         self._handle = add_mesh_to_node(self._node.handle, self._name)
     
-    def add(self, mesh_primitive: 'MeshPrimitive', material: 'Material'):
-        add_primitive_to_mesh(self._handle, mesh_primitive.handle,
+    def add_primitive(self, packed_geometry: 'PackedGeometry',
+    material: 'Material'):
+        add_primitive_to_mesh(self._handle, packed_geometry.handle,
             material.handle)
 
 
-class MeshPrimitive():
+class PackedGeometry():
     @property
     def handle(self): return self._handle
 
@@ -168,8 +172,8 @@ class Geometry:
         geometry_delete_triangles(self._handle)
         return self
     
-    def pack(self) -> MeshPrimitive:
-        result = MeshPrimitive()
+    def pack(self) -> PackedGeometry:
+        result = PackedGeometry()
         result._handle = geometry_pack(self._handle)
         return result
 
