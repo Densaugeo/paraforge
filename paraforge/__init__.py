@@ -149,23 +149,26 @@ class Geometry:
     @property
     def handle(self): return self._handle
     
-    def t(self, x: float, y: float, z: float) -> 'Geometry':
+    def t(self, x: int | float, y: int | float, z: int | float) -> 'Geometry':
         return self.translate(x, y, z)
     
-    def translate(self, x: float, y: float, z: float) -> 'Geometry':
-        geometry_translate(self._handle, x, y, z)
+    def translate(self, x: int | float, y: int | float, z: int | float,
+    ) -> 'Geometry':
+        geometry_translate(self._handle, float(x), float(y), float(z))
         return self
     
-    def s(self, x: float, y: float, z: float) -> 'Geometry':
+    def s(self, x: int | float, y: int | float, z: int | float) -> 'Geometry':
         return self.scale(x, y, z)
     
-    def scale(self, x: float, y: float, z: float) -> 'Geometry':
-        geometry_scale(self._handle, x, y, z)
+    def scale(self, x: int | float, y: int | float, z: int | float,
+    ) -> 'Geometry':
+        geometry_scale(self._handle, float(x), float(y), float(z))
         return self
     
-    def select_triangles(self, x1: float, y1: float, z1: float, x2: float,
-    y2: float, z2: float):
-        geometry_select_triangles(self._handle, x1, y1, z1, x2, y2, z2)
+    def select_triangles(self, x1: int | float, y1: int | float,
+    z1: int | float, x2: int | float, y2: int | float, z2: int | float):
+        geometry_select_triangles(self._handle, float(x1), float(y1), float(z1),
+            float(x2), float(y2), float(z2))
         return self
     
     def delete_triangles(self):
