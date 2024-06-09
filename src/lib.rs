@@ -9,9 +9,8 @@ use paraforge_macros::ffi;
 /////////////
 
 // Statics are use to hold Paraforge's working data. They allow storing
-// persistent data structres that can be modified across different FFI calls
+// persistent data structures that can be modified across different FFI calls
 
-static DATA_STRUCTURES: Mutex<Vec<DataStructure>> = Mutex::new(Vec::new());
 static GEOMETRIES: Mutex<Vec<Geometry>> = Mutex::new(Vec::new());
 static PACKED_GEOMETRIES: Mutex<Vec<PackedGeometry>> = Mutex::new(Vec::new());
 static STRING_TRANSPORT: Mutex<[Vec<u8>; 4]> = Mutex::new([vec![], vec![],
@@ -133,23 +132,6 @@ type FFIResult<T> = Result<T, ErrorCode>;
 //////////////////////////////
 // Non-GLTF Data Structures //
 //////////////////////////////
-
-#[derive(Clone, serde::Serialize)]
-struct DataStructure {
-  an_integer: i32,
-  a_float: f32,
-  a_string: String,
-}
-
-impl DataStructure {
-  pub fn new() -> Self {
-    Self {
-      an_integer: 4,
-      a_float: 1.2,
-      a_string: String::from("Stringyyyyyy!"),
-    }
-  }
-}
 
 pub enum SelectionType {
   VERTICES,
@@ -1185,39 +1167,6 @@ fn init() -> FFIResult<()> {
   let mut gltf_source = lock(&GLTF_SOURCE)?;
   *gltf_source = Some(GLTF::new());
   return Ok(());
-}
-
-#[ffi]
-fn new_data_structure() -> FFIResult<usize> {
-  let mut data_structures = lock(&DATA_STRUCTURES)?;
-  data_structures.push(DataStructure::new());
-  return Ok(data_structures.len() - 1);
-}
-
-#[ffi]
-fn multiply_float(index: u32, value: f32) -> FFIResult<()> {
-  let mut data_structures = lock(&DATA_STRUCTURES)?;
-  
-  if data_structures.len() <= index as usize {
-    return Err(ErrorCode::HandleOutOfBounds);
-  }
-  
-  data_structures[index as usize].a_float *= value;
-  return Ok(());
-}
-
-#[ffi]
-fn serialize_test() -> FFIResult<FatPointer> {
-  let data_structures = lock(&DATA_STRUCTURES)?;
-  let mut gltf_output = lock(&GLTF_OUTPUT)?;
-  
-  gltf_output.clear();
-  for i in 0..data_structures.len() {
-    serde_json::ser::to_writer(&mut (*gltf_output), &data_structures[i])
-      .unwrap();
-  }
-  
-  return FatPointer::try_from(gltf_output.as_ref());
 }
 
 #[ffi]

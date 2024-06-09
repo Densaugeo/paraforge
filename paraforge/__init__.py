@@ -215,12 +215,6 @@ def wasm_call(function: str, *args):
 def init():
     return wasm_call('init')
 
-def new_data_structure():
-    return wasm_call('new_data_structure')
-
-def multiply_float(handle: int, value: float):
-    return wasm_call('multiply_float', handle, value)
-
 def serialize() -> bytes:
     return bytes(wasm_call('serialize'))
 
@@ -260,6 +254,3 @@ def geometry_delete_triangles(handle: int):
 
 def geometry_pack(handle: int) -> int:
     return wasm_call('geometry_pack', handle)
-
-def serialize_test() -> bytes:
-    return bytes(wasm_call('serialize_test'))
