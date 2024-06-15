@@ -3,8 +3,8 @@ TEST=test.py
 PYTEST_ARGS=--verbosity 2 --tb short
 
 build:
-	cargo build --release --target wasm32-unknown-unknown
-	ln -sf ../target/wasm32-unknown-unknown/release/paraforge.wasm paraforge/paraforge.wasm
+	cd rust && cargo build --release --target wasm32-unknown-unknown
+	ln -sf ../rust/target/wasm32-unknown-unknown/release/paraforge.wasm paraforge/paraforge.wasm
 
 test-scratch:
 	$(PY) test-scratch.py
@@ -32,5 +32,5 @@ upload:
 	$(PY) -m pip uninstall -y keyring
 
 clean:
-	cargo clean
+	cd rust && cargo clean
 	rm -rf paraforge/libparaforge.so build dist paraforge/__pycache__ paraforge.egg-info __pycache__ test-temp
