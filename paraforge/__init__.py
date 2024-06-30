@@ -1,8 +1,15 @@
-import os, enum, ctypes
+try:
+    import wasmtime
+    micropython = False
+except ImportError:
+    micropython = True
 
-import wasmtime
+if micropython:
+    import js
+else:
+    import os, ctypes
 
-class ErrorCode(enum.Enum):
+class ErrorCode:
     None_ = 0
     Mutex = 1
     Generation = 2
@@ -27,10 +34,11 @@ class ParaforgeError(Exception):
     def __init__(self, code: ErrorCode):
         super().__init__(f'Code {code.value}: {code.name}')
 
-store = wasmtime.Store()
-with open(f'{os.path.dirname(__file__)}/paraforge.wasm', 'rb') as f:
-    module = wasmtime.Module(store.engine, f.read())
-instance = wasmtime.Instance(store, module, [])
+if not micropython:
+    store = wasmtime.Store()
+    with open(f'{os.path.dirname(__file__)}/paraforge.wasm', 'rb') as f:
+        module = wasmtime.Module(store.engine, f.read())
+    instance = wasmtime.Instance(store, module, [])
 
 
 class Node:
@@ -185,15 +193,27 @@ def read_string(handle: int) -> str:
     return str(wasm_call('string_transport', handle, -1), 'utf8')
 
 def write_string(handle: int, string: str):
-    raw_bytes = bytes(string, 'utf8')[:64]
-    size = len(raw_bytes)
-    
-    dst_ptr = wasm_call('string_transport', handle, size)
-    ctypes.memmove(dst_ptr, raw_bytes, len(raw_bytes))
+    if micropython:
+        js.string_transport(handle, string)
+    else:
+        raw_bytes = bytes(string, 'utf8')[:64]
+        size = len(raw_bytes)
+        
+        dst_ptr = wasm_call('string_transport', handle, size)
+        ctypes.memmove(dst_ptr, raw_bytes, len(raw_bytes))
 
 def wasm_call(function: str, *args):
-    function = instance.exports(store)[function]
-    result = function(store, *args)
+    if micropython:
+        # paraforge.wasm functions return i64...but micropython.wasm offers no
+        # means to transfer an i64 across it's FFI boundary. So the JS call
+        # actually returns an f64. All the paraforge.wasm functions called by
+        # this library return values low enough to fit in the 53 integer bits
+        # available in an f64
+        result = int(js.py_rust_call(function, *args))
+    else:
+        function = instance.exports(store)[function]
+        result = function(store, *args)
+    
     tag = (result % 2**64) >> 32
     value = result & 0xffffffff
     
