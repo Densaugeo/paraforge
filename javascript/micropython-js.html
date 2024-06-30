@@ -1,0 +1,80 @@
+<!doctype html>
+<html>
+<head>
+  <title>MicroPython Test</title>
+</head>
+
+<body>
+  <pre id="micropython-stdout"></pre>
+</body>
+
+<script type="module">
+import * as micropython from './micropython-reduced.js'
+
+micropython.VFS.STDOUT = line => {
+  document.getElementById("micropython-stdout").innerText += line
+}
+micropython.VFS.STDERR = line => {
+  document.getElementById("micropython-stdout").innerText += line
+}
+
+let res = await fetch('../examples/first_model.pf.py', { cache: 'reload' })
+let res_blob = await res.blob()
+let res_array_buffer = await res_blob.arrayBuffer()
+micropython.VFS['/first_model.py'] = new Uint8Array(res_array_buffer)
+
+micropython.VFS['/paraforge'] = null
+
+res = await fetch('../paraforge/__init__.py', { cache: 'reload' })
+res_blob = await res.blob()
+res_array_buffer = await res_blob.arrayBuffer()
+micropython.VFS['/paraforge/__init__.py'] = new Uint8Array(res_array_buffer)
+
+window.mp = await micropython.loadMicroPython()
+await mp.runPythonAsync(`
+  import js
+  print(dir(js))
+  print(js.test_function(4))
+  print(js.test_string_function('string from MicroPython side'))
+  print()
+  
+  import time
+  print('Sleeping...', end='')
+  time.sleep(1)
+  print('OK')
+  print()
+  
+  import random
+  print(random.random())
+  print()
+  
+  big_list = []
+  for i in range(1e+5):
+      big_list.append(i)
+  print(big_list[-1])
+  print()
+  
+  import first_model
+  first_model.gen_first_model()
+  
+  #1/0
+`)
+
+res = await fetch('../test-files/first_model.glb', { cache: 'reload' })
+res_blob = await res.blob()
+res_array_buffer = await res_blob.arrayBuffer()
+window.expected_glb = new Uint8Array(res_array_buffer)
+window.actual_glb = serialize()
+window.decoder = new TextDecoder()
+console.log('Is the actual .glb as expected?')
+console.log(decoder.decode(expected_glb) == decoder.decode(actual_glb))
+//console.log(decoder.decode(expected_glb))
+//console.log(decoder.decode(actual_glb))
+for(let i = 0; i < expected_glb.length; ++i) {
+  if(expected_glb[i] != actual_glb[i]) {
+    console.log(`First difference at ${i}`)
+    break
+  }
+}
+</script>
+</html>
