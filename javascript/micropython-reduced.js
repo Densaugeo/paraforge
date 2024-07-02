@@ -317,47 +317,6 @@ result_pointer) {
     };
 
   
-  var SYSCALLS = {
-  doStat(buf, exists, is_folder=false) {
-        // Format is similar to stat struct from
-        // https://www.man7.org/linux/man-pages/man3/stat.3type.html .
-        // However, the inode # is moved to the end of the struct
-        
-        // dev - Not sure what this is, but Python doesn't seem to care
-        HEAP32[((buf)>>2)] = 0
-        
-        // Mode. It's a bit field, some of it seems to be for file permissions
-        // (but MicroPython ignores that part). MicroPython expects one bit to
-        // be set though (no idea why). Which bit depends on whether path is a
-        // file or folder
-        HEAP32[(((buf)+(4))>>2)] = exists ? (is_folder ? 0x4000 : 0x8000) : 0
-        
-        HEAPU32[(((buf)+(8))>>2)] = 0 // # of hard links - none of those lol
-        HEAP32[(((buf)+(12))>>2)] = 0 // UID
-        HEAP32[(((buf)+(16))>>2)] = 0 // GID
-        
-        // rdev - Not sure what this is, but Python doesn't seem to care
-        HEAP32[(((buf)+(20))>>2)] = 0
-        
-        // File size. Ignored by Python
-        HEAP32[(((buf)+(24))>>2)] = 0
-        HEAP32[(((buf)+(28))>>2)] = 0
-        
-        // FS block size. Ignored by Python
-        HEAP32[(((buf)+(32))>>2)] = 0
-        
-        // Block count. Ignored by Python
-        HEAP32[(((buf)+(36))>>2)] = 0
-        
-        // 3 timestamps for access, modification, and status change. All 3
-        // appear to consist of two 64-bit integers, and none seem necessary
-        for(let i = 40; i < 88; i +=4) HEAPU32[(((buf)+(i))>>2)] = 0;
-        
-        // Inode #. Ignored by Python
-        HEAP32[(((buf)+(92))>>2)] = 0
-      },
-  };
-  
   function ___syscall_openat(dirfd, path, flags, varargs) {
     console.log(`___syscall_openat(dirfd=${dirfd}, path=${path}, flags=${flags}, varargs=${varargs})`)
     try {
@@ -375,7 +334,36 @@ result_pointer) {
       path = UTF8ToString(path)
       if(path[0] !== '/') path = '/' + path
       console.log(`___syscall_stat64 path converted to "${path}"`)
-      SYSCALLS.doStat(buf, path in VFS, VFS[path] === null)
+
+      // Format is similar to stat struct from
+      // https://www.man7.org/linux/man-pages/man3/stat.3type.html . However,
+      // the inode # is moved to the end of the struct.
+      //
+      // Offset    Size    Name       Description
+      // 0         4       dev        Idk what this is
+      // 4         4       mode       Only field upython needs (see code)
+      // 8         4       nlink      # of hard links
+      // 12        4       UID
+      // 16        4       GID
+      // 20        4       rdev       Idk what this is
+      // 24        8       size
+      // 32        4       blksize    Block size
+      // 36        4       blocks     Block count (but in 512 B blocks)
+      // 40        16      atim       Time of last access
+      // 56        16      mtim       Time of last modification
+      // 72        16      ctime      Time of last status change
+      // 88        8       ino        Inode #
+      //
+      // The 3 timestamp fields are each 16 bytes (2 64-bit timestamps, idk why
+      // each timestamp field timestamps inside it)
+      HEAPU32.fill(0, buf >> 2, (buf + 92) >> 2)
+      
+      // Mode. It's a bit field, some of it seems to be for file permissions
+      // (but MicroPython ignores that part). MicroPython expects one bit to be
+      // set though (no idea why). Which bit depends on whether path is a file
+      // or folder
+      const is_folder = VFS[path] === null
+      HEAPU32[(buf + 4) >> 2] = path in VFS ? (is_folder ? 0x4000 : 0x8000) : 0
     } catch (e) { return -1 }
     
     return 0
