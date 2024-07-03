@@ -79,50 +79,6 @@ var _createMicroPythonModule = async function() {
 
 var Module = {};
 
-//========================================
-// Runtime essentials
-//========================================
-
-// whether we are quitting the application. no code should run after this.
-// set by exit() and abort().  Passed to 'onExit' handler.
-// NOTE: This is also used as the process return code code in shell environments
-// but only when noExitRuntime is false.
-
-// In STRICT mode, we only define assert() when ASSERTIONS is set.  i.e. we
-// don't define it at all in release modes.  This matches the behaviour of
-// MINIMAL_RUNTIME.
-// TODO(sbc): Make this the default even without STRICT enabled.
-/** @type {function(*, string=)} */
-function assert(condition, text) {
-  if (!condition) {
-    abort('Assertion failed' + (text ? ': ' + text : ''));
-  }
-}
-
-// We used to include malloc/free by default in the past. Show a helpful error in
-// builds with assertions.
-
-// Memory management
-
-var HEAP,
-/** @type {!Int8Array} */
-  HEAP8,
-/** @type {!Uint8Array} */
-  HEAPU8,
-/** @type {!Int16Array} */
-  HEAP16,
-/** @type {!Uint16Array} */
-  HEAPU16,
-/** @type {!Int32Array} */
-  HEAP32,
-/** @type {!Uint32Array} */
-  HEAPU32,
-/** @type {!Float32Array} */
-  HEAPF32,
-/** @type {!Float64Array} */
-  HEAPF64;
-
-
 
 function lookup_attr(js_handle, name_pointer, result_pointer) {
   // js_handle is used by emscripten to designate which JS object to look up
@@ -182,9 +138,6 @@ result_pointer) {
      */
   function getValue(ptr, type) {
     switch (type) {
-      case 'i1': return HEAP8[ptr];
-      case 'i8': return HEAP8[ptr];
-      case 'i16': return HEAP16[((ptr)>>1)];
       case 'i32': return HEAP32[((ptr)>>2)];
       // 64-bit ints not supported, because upython was compiled with
       // emscripten's WASM_BIGINT flag not set. Additionally, upython offers no
@@ -204,9 +157,6 @@ result_pointer) {
      */
   function setValue(ptr, value, type) {
     switch (type) {
-      case 'i1': HEAP8[ptr] = value; break;
-      case 'i8': HEAP8[ptr] = value; break;
-      case 'i16': HEAP16[((ptr)>>1)] = value; break;
       case 'i32': HEAP32[((ptr)>>2)] = value; break;
       case 'float': HEAPF32[((ptr)>>2)] = value; break;
       case 'double': HEAPF64[((ptr)>>3)] = value; break;
@@ -216,106 +166,33 @@ result_pointer) {
 
   
   
-  var UTF8Decoder = new TextDecoder('utf8')
-  
-    /**
-     * Given a pointer 'idx' to a null-terminated UTF8-encoded string in the given
-     * array that contains uint8 values, returns a copy of that string as a
-     * Javascript String object.
-     * heapOrArray is either a regular array, or a JavaScript typed array view.
-     * @param {number} idx
-     * @param {number=} maxBytesToRead
-     * @return {string}
-     */
-  var UTF8ArrayToString = (heapOrArray, idx, maxBytesToRead) => {
-      var endPtr = idx;
-      // TextDecoder needs to know the byte length in advance, it doesn't stop
-      // on null terminator by itself
-      while (heapOrArray[endPtr]) ++endPtr;
-      
-      return UTF8Decoder.decode(heapOrArray.subarray(idx, endPtr));
-    };
-  
-  var lengthBytesUTF8 = (str) => {
-      var len = 0;
-      for (var i = 0; i < str.length; ++i) {
-        // Gotcha: charCodeAt returns a 16-bit word that is a UTF-16 encoded code
-        // unit, not a Unicode code point of the character! So decode
-        // UTF16->UTF32->UTF8.
-        // See http://unicode.org/faq/utf_bom.html#utf16-3
-        var c = str.charCodeAt(i); // possibly a lead surrogate
-        if (c <= 0x7F) {
-          len++;
-        } else if (c <= 0x7FF) {
-          len += 2;
-        } else if (c >= 0xD800 && c <= 0xDFFF) {
-          len += 4; ++i;
-        } else {
-          len += 3;
-        }
-      }
-      return len;
-    };
-  
-  var UTF8Encoder = new TextEncoder('utf8')
-  
-  var stringToUTF8Array = (str, heap, outIdx, maxBytesToWrite) => {
-      assert(typeof str === 'string', `stringToUTF8Array expects a string (got ${typeof str})`);
-      // Parameter maxBytesToWrite is not optional. Negative values, 0, null,
-      // undefined and false each don't write out any bytes.
-      if (!(maxBytesToWrite > 0))
-        return 0;
-  
-      // -1 for string null terminator
-      let view = HEAPU8.subarray(outIdx, outIdx + maxBytesToWrite - 1)
-      
-      let len = UTF8Encoder.encodeInto(str, view).written
-      HEAPU8[outIdx + len] = 0
-      return len
-    };
+  function UTF8ToString(pointer, max_length) {
+    if(pointer === 0) return ''
+    
+    // Must use var and not let, due to javascript's bizarre scoping rules
+    for(var length = 0; HEAPU8[pointer + length]; ++length) {
+      // If max_length is undefined this does nothing, that mirros how
+      // emscripten did this
+      if(length >= max_length) break
+    }
+    
+    return Module.UTF8Decoder.decode(HEAPU8.subarray(pointer, pointer + length))
+  }
   
   
   
+  function stringToUTF8(string, pointer, max_length) {
+    if(typeof max_length !== 'number' || max_length <= 0) return 0
+    
+    // -1 for string null terminator
+    let view = HEAPU8.subarray(pointer, pointer + max_length - 1)
+    
+    let len = Module.UTF8Encoder.encodeInto(string, view).written
+    HEAPU8[pointer + len] = 0 // Null terminator
+    return len + 1
+  }
   
   
-  
-  
-  
-  
-  
-  
-  
-    /**
-     * Given a pointer 'ptr' to a null-terminated UTF8-encoded string in the
-     * emscripten HEAP, returns a copy of that string as a Javascript String object.
-     *
-     * @param {number} ptr
-     * @param {number=} maxBytesToRead - An optional length that specifies the
-     *   maximum number of bytes to read. You can omit this parameter to scan the
-     *   string until the first 0 byte. If maxBytesToRead is passed, and the string
-     *   at [ptr, ptr+maxBytesToReadr[ contains a null byte in the middle, then the
-     *   string will cut short at that byte index (i.e. maxBytesToRead will not
-     *   produce a string of exact length [ptr, ptr+maxBytesToRead[) N.B. mixing
-     *   frequent uses of UTF8ToString() with and without maxBytesToRead may throw
-     *   JS JIT optimizations off, so it is worth to consider consistently using one
-     * @return {string}
-     */
-  var UTF8ToString = (ptr, maxBytesToRead) => {
-      assert(typeof ptr == 'number', `UTF8ToString expects a number (got ${typeof ptr})`);
-      return ptr ? UTF8ArrayToString(HEAPU8, ptr, maxBytesToRead) : '';
-    };
-  
-  var stringToUTF8 = (str, outPtr, maxBytesToWrite) => {
-      assert(typeof maxBytesToWrite == 'number', 'stringToUTF8(str, outPtr, maxBytesToWrite) is missing the third parameter that specifies the length of the output buffer!');
-      return stringToUTF8Array(str, HEAPU8, outPtr, maxBytesToWrite);
-    };
-  
-  var convertI32PairToI53Checked = (lo, hi) => {
-      assert(lo == (lo >>> 0) || lo == (lo|0)); // lo should either be a i32 or a u32
-      assert(hi === (hi|0));                    // hi should be a i32
-      return ((hi + 0x200000) >>> 0 < 0x400001 - !!lo) ? (lo >>> 0) + hi * 4294967296 : NaN;
-    };
-
   
   function ___syscall_openat(dirfd, path, flags, varargs) {
     console.log(`___syscall_openat(dirfd=${dirfd}, path=${path}, flags=${flags}, varargs=${varargs})`)
@@ -390,11 +267,11 @@ result_pointer) {
     let virtual_file = VFS[virtual_fd.path]
     let bytes_to_read = Math.min(len, virtual_file.length - virtual_fd.cursor)
     for(let i = 0; i < bytes_to_read; ++i) {
-      HEAP8[ptr + i] = virtual_file[virtual_fd.cursor + i]
+      HEAPU8[ptr + i] = virtual_file[virtual_fd.cursor + i]
     }
     virtual_fd.cursor += bytes_to_read
     HEAPU32[((pnum)>>2)] = bytes_to_read
-    //console.log(`Read ${bytes_to_read} bytes: ${HEAP8.slice(ptr, ptr + bytes_to_read)}`)
+    //console.log(`Read ${bytes_to_read} bytes: ${HEAPU8.slice(ptr, ptr + bytes_to_read)}`)
     
     return 0
   }
@@ -410,7 +287,7 @@ result_pointer) {
     
     var ptr = HEAPU32[((iov)>>2)];
     var len = HEAPU32[(((iov)+(4))>>2)];
-    let text = new TextDecoder().decode(HEAP8.slice(ptr, ptr + len))
+    let text = new TextDecoder().decode(HEAPU8.slice(ptr, ptr + len))
     if(fd === 1) VFS.STDOUT(text)
     if(fd === 2) VFS.STDERR(text)
     HEAPU32[((pnum)>>2)] = len
@@ -546,27 +423,24 @@ result = await WebAssembly.instantiateStreaming(response, {
   'wasi_snapshot_preview1': wasmImports,
 })
 
-var b = result.instance.exports.memory.buffer;
-Module['HEAP8'] = HEAP8 = new Int8Array(b);
-Module['HEAP16'] = HEAP16 = new Int16Array(b);
-Module['HEAPU8'] = HEAPU8 = new Uint8Array(b);
-Module['HEAPU16'] = HEAPU16 = new Uint16Array(b);
-Module['HEAP32'] = HEAP32 = new Int32Array(b);
-Module['HEAPU32'] = HEAPU32 = new Uint32Array(b);
-Module['HEAPF32'] = HEAPF32 = new Float32Array(b);
-Module['HEAPF64'] = HEAPF64 = new Float64Array(b);
+const buffer = result.instance.exports.memory.buffer
+const HEAPU8  = Module.HEAPU8  = new Uint8Array  (buffer)
+const HEAP32  = Module.HEAP32  = new Int32Array  (buffer)
+const HEAPU32 = Module.HEAPU32 = new Uint32Array (buffer)
+const HEAPF32 = Module.HEAPF32 = new Float32Array(buffer)
+const HEAPF64 = Module.HEAPF64 = new Float64Array(buffer)
 
 result.instance.exports.__wasm_call_ctors()
 
 Module.module = result.module
 Module.instance = result.instance
-Module.UTF8Encoder = UTF8Encoder
+Module.UTF8Encoder = new TextEncoder('utf8')
+Module.UTF8Decoder = new TextDecoder('utf8')
 
-Module['setValue'] = setValue;
-Module['getValue'] = getValue;
-Module['UTF8ToString'] = UTF8ToString;
-Module['stringToUTF8'] = stringToUTF8;
-Module['lengthBytesUTF8'] = lengthBytesUTF8;
+Module.setValue = setValue;
+Module.getValue = getValue;
+Module.UTF8ToString = UTF8ToString;
+Module.stringToUTF8 = stringToUTF8;
 
 
 
@@ -581,16 +455,7 @@ Module.rust_instance = rust_instance
 return Module
 }
 
-// Options:
-// - heapsize: size in bytes of the MicroPython GC heap.
-// - url: location to load `micropython.mjs`.
-// - stdin: function to return input characters.
-// - stdout: function that takes one argument, and is passed lines of stdout
-//   output as they are produced.  By default this is handled by Emscripten
-//   and in a browser goes to console, in node goes to process.stdout.write.
-// - stderr: same behaviour as stdout but for error output.
-// - linebuffer: whether to buffer line-by-line to stdout/stderr.
-export async function loadMicroPython(options) {
+export async function loadMicroPython() {
     const heapsize = 1024*1024
     
     const Module = await _createMicroPythonModule();
@@ -674,7 +539,7 @@ function proxy_convert_js_to_mp_obj_jsside(js_obj, out, force_float=false) {
         }
     } else if (typeof js_obj === "string") {
         kind = PROXY_KIND_JS_STRING;
-        const len = Module.lengthBytesUTF8(js_obj);
+        const len = new TextEncoder().encode(js_obj).length
         const buf = Module.instance.exports.malloc(len + 1);
         Module.stringToUTF8(js_obj, buf, len + 1);
         Module.setValue(out + 4, len, "i32");
