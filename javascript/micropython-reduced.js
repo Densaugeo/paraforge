@@ -343,11 +343,11 @@ var wasmImports = {
   invoke_iii  : invoke,
   invoke_iiii : invoke,
   invoke_iiiii: invoke,
-  invoke_v    : invoke_void,
-  invoke_vi   : invoke_void,
-  invoke_vii  : invoke_void,
-  invoke_viii : invoke_void,
-  invoke_viiii: invoke_void,
+  invoke_v    : invoke,
+  invoke_vi   : invoke,
+  invoke_vii  : invoke,
+  invoke_viii : invoke,
+  invoke_viiii: invoke,
   mp_js_random_u32: () => crypto.getRandomValues(new Uint32Array(1))[0],
   mp_js_ticks_ms: () => Date.now() - MP_JS_EPOCH,
   mp_js_time_ms: () => Date.now(),
@@ -385,24 +385,14 @@ var wasmImports = {
 // .wasm. Because wasm doesn't have goto or exception support built-in,
 // emscripten borrows them from the host environment by relaying the function
 // calls involved through this external layer https://stackoverflow.com/questions/45511465/purpose-of-invoke-functions-generated-by-emscripten
-
+//
+// Update: After disabling emscripten's asyncify to reduce .wasm size (by 70%!)
+// the dynCall_* exports disappeared, and are replaced by functions accessed
+// through __indirect_function_table
 function invoke(index, ...args) {
   var sp = Module.instance.exports.stackSave()
   try {
-    const target = 'dynCall_i' + 'i'.repeat(args.length)
-    return Module.instance.exports[target](index, ...args)
-  } catch(e) {
-    Module.instance.exports.stackRestore(sp)
-    if (e !== e+0) throw e
-    Module.instance.exports.setThrew(1, 0)
-  }
-}
-
-function invoke_void(index, ...args) {
-  var sp = Module.instance.exports.stackSave()
-  try {
-    const target = 'dynCall_v' + 'i'.repeat(args.length)
-    Module.instance.exports[target](index, ...args)
+    return Module.instance.exports.__indirect_function_table.get(index)(...args)
   } catch(e) {
     Module.instance.exports.stackRestore(sp)
     if (e !== e+0) throw e

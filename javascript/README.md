@@ -20,15 +20,11 @@ cd ..
 git clone git@github.com:micropython/micropython.git
 cd micropython
 git checkout 5114f2c
+make --directory mpy-cross
+# Disable emscripten's asyncify to reduce .wasm size (by 70%!)
+sed -i '1d' ports/webassembly/variants/standard/mpconfigvariant.mk
+make --directory ports/webassembly
 cd ..
 
-# Set up cross-compiler (documented in MicroPython readme)
-cd micropython/mpy-cross
-make
-cd ../..
-
-cd micropython/ports/webassembly
-make
-cd ../../..
 cp micropython/ports/webassembly/build-standard/micropython.wasm .
 ```
