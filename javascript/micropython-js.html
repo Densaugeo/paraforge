@@ -10,6 +10,7 @@
 
 <script type="module">
 import * as micropython from './micropython-reduced.js'
+window.micropython = micropython
 
 micropython.VFS.STDOUT = line => {
   document.getElementById("micropython-stdout").innerText += line

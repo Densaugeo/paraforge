@@ -1,3 +1,24 @@
+let response = await fetch('../paraforge/paraforge.wasm', { cache: 'reload' })
+const rust_module = await WebAssembly.compileStreaming(response)
+
+response = await fetch('micropython.wasm', { cache: 'reload' })
+const upython_module = await WebAssembly.compileStreaming(response)
+
+export class Paraforge {
+  constructor() {
+    this.worker = new Worker('paraforge-worker.js')
+    
+    this.worker.onerror = e => {
+      console.log(`Received error from worker: ${e}`)
+      throw e
+    }
+  }
+  
+  gen() {
+    this.worker.postMessage('helloooooo')
+  }
+}
+
 /////////////////////////
 // Virtual File System //
 /////////////////////////
@@ -400,30 +421,15 @@ function invoke(index, ...args) {
   }
 }
 
-let response = await fetch(new URL('../paraforge/paraforge.wasm',
-  import.meta.url).href, { cache: 'reload' })
-let result = await WebAssembly.instantiateStreaming(response)
-const rust_module = result.module
-const rust_instance = result.instance
+const rust_instance = await WebAssembly.instantiate(rust_module)
 
-response = await fetch(new URL('micropython.wasm', import.meta.url).href,
-  { cache: 'reload' })
-result = await WebAssembly.instantiateStreaming(response, {
+const upython_instance = await WebAssembly.instantiate(upython_module, {
   'env': wasmImports,
   'wasi_snapshot_preview1': wasmImports,
 })
 
-const buffer = result.instance.exports.memory.buffer
-const HEAPU8  = Module.HEAPU8  = new Uint8Array  (buffer)
-const HEAP32  = Module.HEAP32  = new Int32Array  (buffer)
-const HEAPU32 = Module.HEAPU32 = new Uint32Array (buffer)
-const HEAPF32 = Module.HEAPF32 = new Float32Array(buffer)
-const HEAPF64 = Module.HEAPF64 = new Float64Array(buffer)
-
-result.instance.exports.__wasm_call_ctors()
-
-Module.module = result.module
-Module.instance = result.instance
+Module.module = upython_module
+Module.instance = upython_instance
 Module.UTF8Encoder = new TextEncoder('utf8')
 Module.UTF8Decoder = new TextDecoder('utf8')
 
@@ -431,6 +437,15 @@ Module.setValue = setValue;
 Module.getValue = getValue;
 Module.UTF8ToString = UTF8ToString;
 Module.stringToUTF8 = stringToUTF8;
+
+const buffer = Module.instance.exports.memory.buffer
+const HEAPU8  = Module.HEAPU8  = new Uint8Array  (buffer)
+const HEAP32  = Module.HEAP32  = new Int32Array  (buffer)
+const HEAPU32 = Module.HEAPU32 = new Uint32Array (buffer)
+const HEAPF32 = Module.HEAPF32 = new Float32Array(buffer)
+const HEAPF64 = Module.HEAPF64 = new Float64Array(buffer)
+
+Module.instance.exports.__wasm_call_ctors()
 
 
 
