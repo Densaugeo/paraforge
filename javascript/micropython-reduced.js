@@ -1,31 +1,94 @@
-let response = await fetch('../paraforge/paraforge.wasm', { cache: 'reload' })
-const rust_module = await WebAssembly.compileStreaming(response)
+const rust_module_promise = (async () => {
+  const response = await fetch('../paraforge/paraforge.wasm',
+    { cache: 'no-store' })
+  return await WebAssembly.compileStreaming(response)
+})()
 
-response = await fetch('micropython.wasm', { cache: 'reload' })
-const upython_module = await WebAssembly.compileStreaming(response)
+const upython_module_promise = (async () => {
+  const response = await fetch('micropython.wasm',
+    { cache: 'no-store' })
+  return await WebAssembly.compileStreaming(response)
+})()
+
+const worker_file_promise = (async () => {
+  const response = await fetch('paraforge-worker.js', { cache: 'no-store' })
+  // The worker response must be converted into text before being converted into
+  // a file object, otherwise browser console will not provide error information
+  // for error that occur inside the worker thread
+  const text = await response.text()
+  return URL.createObjectURL(new File([text], 'paraforge-worker.js'))
+})()
+
+const paraforge_init_py_promise = (async () => {
+  const response = await fetch('../paraforge/__init__.py', { cache: 'reload' })
+  const array_buffer = await response.arrayBuffer()
+  return new Uint8Array(array_buffer)
+})()
+
+const [
+  rust_module,
+  upython_module,
+  worker_file,
+  paraforge_init_py,
+] = await Promise.all([
+  rust_module_promise,
+  upython_module_promise,
+  worker_file_promise,
+  paraforge_init_py_promise,
+])
 
 export class Paraforge {
   constructor() {
-    this.worker = new Worker('paraforge-worker.js')
+    this.worker = new Worker(worker_file, { type: 'module' })
     
     this.worker.onerror = e => {
-      console.log(`Received error from worker: ${e}`)
+      console.log('An error happened in a worker. Good luck getting any ' +
+        'debugging info.')
       throw e
     }
+    
+    this.worker.onmessage = message => {
+      console.log(message.data)
+    }
+    
+    this.worker.postMessage({
+      type: 'init',
+      rust_module,
+    })
   }
   
   gen() {
-    this.worker.postMessage('helloooooo')
+    this.worker.postMessage(['helloooooo'])
   }
 }
+
+export const event_emitter = new EventTarget()
 
 /////////////////////////
 // Virtual File System //
 /////////////////////////
 
+class ParaforgeEvent extends Event {}
+
+class StdoutEvent extends ParaforgeEvent {
+  constructor(line) {
+    super('stdout')
+    this.line = line
+  }
+}
+
+class StderrEvent extends ParaforgeEvent {
+  constructor(line) {
+    super('stderr')
+    this.line = line
+  }
+}
+
 export let VFS = {
-  STDOUT: () => {},
-  STDERR: () => {},
+  STDOUT: line => event_emitter.dispatchEvent(new StdoutEvent(line)),
+  STDERR: line => event_emitter.dispatchEvent(new StderrEvent(line)),
+  '/paraforge': null,
+  '/paraforge/__init__.py': paraforge_init_py,
 }
 
 class VirtualFD {
@@ -87,7 +150,7 @@ function py_rust_call(name, ...args) {
   return Number(Module.rust_instance.exports[name](...args))
 }
 
-export let proxy_js_ref = [{
+let proxy_js_ref = [{
   // Test functions
   test_function, test_string_function,
   
@@ -468,7 +531,7 @@ export async function loadMicroPython() {
     Module.instance.exports.mp_js_init(heapsize)
     Module.instance.exports.proxy_c_init()
     return {
-        runPythonAsync(code) {
+        runPython(code) {
             const mystery_pointer = Module.instance.exports.malloc(3 * 4);
             const stack = Module.instance.exports.stackSave();
             
@@ -478,12 +541,22 @@ export async function loadMicroPython() {
                 Module.instance.exports.stackAlloc(utf8.length);
               Module.HEAPU8.set(utf8, string_pointer)
               
-              Module.instance.exports.mp_js_do_exec_async(string_pointer, mystery_pointer);
+              Module.instance.exports.mp_js_do_exec(string_pointer, mystery_pointer);
             } finally {
               Module.instance.exports.stackRestore(stack)
             }
             
             return proxy_convert_mp_to_js_obj_jsside_with_free(mystery_pointer);
+        },
+        gen(args_) {
+          const { script_name, script_contents, generator, args } = args_
+          
+          VFS[`/${script_name}.py`] = new Uint8Array(script_contents)
+          
+          return this.runPython(`
+            import ${script_name}
+            ${script_name}.gen_${generator}(${args})
+          `)
         },
     };
 }

@@ -12,27 +12,27 @@
 import * as micropython from './micropython-reduced.js'
 window.micropython = micropython
 
-micropython.VFS.STDOUT = line => {
-  document.getElementById("micropython-stdout").innerText += line
-}
-micropython.VFS.STDERR = line => {
-  document.getElementById("micropython-stdout").innerText += line
-}
+micropython.event_emitter.addEventListener('stderr', e => {
+  document.getElementById('micropython-stdout').innerHTML +=
+    `<text style="color:#f00">${e.line}</text>`
+})
+micropython.event_emitter.addEventListener('stdout', e => {
+  document.getElementById('micropython-stdout').innerHTML += e.line
+})
 
 let res = await fetch('../examples/first_model.pf.py', { cache: 'reload' })
 let res_blob = await res.blob()
 let res_array_buffer = await res_blob.arrayBuffer()
-micropython.VFS['/first_model.py'] = new Uint8Array(res_array_buffer)
-
-micropython.VFS['/paraforge'] = null
-
-res = await fetch('../paraforge/__init__.py', { cache: 'reload' })
-res_blob = await res.blob()
-res_array_buffer = await res_blob.arrayBuffer()
-micropython.VFS['/paraforge/__init__.py'] = new Uint8Array(res_array_buffer)
+let first_model_py = new Uint8Array(res_array_buffer)
 
 window.mp = await micropython.loadMicroPython()
-await mp.runPythonAsync(`
+mp.gen({
+  script_name: 'first_model',
+  script_contents: first_model_py,
+  generator: 'first_model',
+  args: [],
+})
+mp.runPython(`
   import js
   print(dir(js))
   print(js.test_function(4))
@@ -54,9 +54,6 @@ await mp.runPythonAsync(`
       big_list.append(i)
   print(big_list[-1])
   print()
-  
-  import first_model
-  first_model.gen_first_model()
   
   #1/0
 `)
