@@ -25,14 +25,16 @@ let res_blob = await res.blob()
 let res_array_buffer = await res_blob.arrayBuffer()
 let first_model_py = new Uint8Array(res_array_buffer)
 
-window.mp = await micropython.loadMicroPython()
-mp.gen({
+await micropython.init({
   script_name: 'first_model',
   script_contents: first_model_py,
+})
+micropython.gen({
+  script_name: 'first_model',
   generator: 'first_model',
   args: [],
 })
-mp.runPython(`
+micropython.runPython(`
   import js
   print(dir(js))
   print(js.test_function(4))
@@ -62,7 +64,7 @@ res = await fetch('../test-files/first_model.glb', { cache: 'reload' })
 res_blob = await res.blob()
 res_array_buffer = await res_blob.arrayBuffer()
 window.expected_glb = new Uint8Array(res_array_buffer)
-window.actual_glb = serialize()
+window.actual_glb = micropython.serialize()
 window.decoder = new TextDecoder()
 console.log('Is the actual .glb as expected?')
 console.log(decoder.decode(expected_glb) == decoder.decode(actual_glb))

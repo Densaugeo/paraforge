@@ -1,3 +1,7 @@
+/////////////////////////
+// Preload HTTP Assets //
+/////////////////////////
+
 const rust_module_promise = (async () => {
   const response = await fetch('../paraforge/paraforge.wasm',
     { cache: 'no-store' })
@@ -37,6 +41,10 @@ const [
   paraforge_init_py_promise,
 ])
 
+////////////////////////////////////
+// Paraforge Class (Experimental) //
+////////////////////////////////////
+
 export class Paraforge {
   constructor() {
     this.worker = new Worker(worker_file, { type: 'module' })
@@ -68,16 +76,16 @@ export const event_emitter = new EventTarget()
 // Virtual File System //
 /////////////////////////
 
-class ParaforgeEvent extends Event {}
+export class ParaforgeEvent extends Event {}
 
-class StdoutEvent extends ParaforgeEvent {
+export class StdoutEvent extends ParaforgeEvent {
   constructor(line) {
     super('stdout')
     this.line = line
   }
 }
 
-class StderrEvent extends ParaforgeEvent {
+export class StderrEvent extends ParaforgeEvent {
   constructor(line) {
     super('stderr')
     this.line = line
@@ -115,39 +123,38 @@ VirtualFD.instances = ['STDIN', 'STDOUT', 'STDERR']
 
 
 
-function test_function(foo) {
+const test_function = foo => {
   //throw new Error('asdf')
   return foo*2
 }
-function test_string_function(string) {
+const test_string_function = string => {
   return string + ' functionized'
 }
 
-function string_transport(handle, string) {
+const string_transport = (handle, string) => {
   const raw_bytes = new TextEncoder().encode(string).slice(0, 64)
-  const fat_pointer = Module.rust_instance.exports.string_transport(handle,
+  const fat_pointer = rust_instance.exports.string_transport(handle,
     raw_bytes.length)
   const pointer = Number(fat_pointer >> BigInt(32))
   
-  const memory = new Uint8Array(Module.rust_instance.exports.memory.buffer)
+  const memory = new Uint8Array(rust_instance.exports.memory.buffer)
   for(let i = 0; i < raw_bytes.length; ++i) {
     memory[pointer + i] = raw_bytes[i]
   }
 }
 
-function serialize() {
-  const fat_pointer =  Module.rust_instance.exports.serialize()
+export const serialize = () => {
+  const fat_pointer =  rust_instance.exports.serialize()
   const offset = Number(fat_pointer >> BigInt(32))
   const size = Number(fat_pointer & BigInt(0xffffffff))
   console.log(`offset=${offset}, size=${size}`)
   
-  const memory = new Uint8Array(Module.rust_instance.exports.memory.buffer)
+  const memory = new Uint8Array(rust_instance.exports.memory.buffer)
   return memory.slice(offset, offset + size)
 }
-window.serialize = serialize
 
-function py_rust_call(name, ...args) {
-  return Number(Module.rust_instance.exports[name](...args))
+const py_rust_call = (name, ...args) => {
+  return Number(rust_instance.exports[name](...args))
 }
 
 let proxy_js_ref = [{
@@ -159,20 +166,17 @@ let proxy_js_ref = [{
   py_rust_call,
 }]
 
-var _createMicroPythonModule = async function() {
+//////////////////////////////////////
+// Functions Expected by Emscripten //
+//////////////////////////////////////
 
-var Module = {};
-
-
-function lookup_attr(js_handle, name_pointer, result_pointer) {
+const lookup_attr = (js_handle, name_pointer, result_pointer) => {
   // js_handle is used by emscripten to designate which JS object to look up
   // attributes on. Since paraforge only permits lookups on one object, this
   // should always be zero
   if(js_handle !== 0) throw new TypeError('js_handle must be 0')
   
   const name = UTF8ToString(name_pointer)
-  
-  //console.log(`lookup_attr(name=${name})`)
   
   // The name not existing is very common: upython tries to look up all sorts of
   // pythonic properties that don't exist here. upython expects to get false
@@ -184,7 +188,7 @@ function lookup_attr(js_handle, name_pointer, result_pointer) {
   return true
 }
 
-function call(function_handle, ...pointers) {
+const call = (function_handle, ...pointers) => {
   // The last pointer is for the return value
   const result_pointer = pointers.pop()
   
@@ -205,8 +209,8 @@ function call(function_handle, ...pointers) {
   proxy_convert_js_to_mp_obj_jsside(ret, result_pointer, force_float);
 }
 
-function calln(function_handle, argument_count, arguments_pointer,
-result_pointer) {
+const calln = (function_handle, argument_count, arguments_pointer,
+result_pointer) => {
   let args = []
   for(let i = 0; i < argument_count; ++i) {
     args.push(arguments_pointer + 12*i)
@@ -215,181 +219,182 @@ result_pointer) {
   call(function_handle, ...args, result_pointer)
 }
 
+// invoke_* and dynCall_* are actually for internal use by the MicroPython
+// .wasm. Because wasm doesn't have goto or exception support built-in,
+// emscripten borrows them from the host environment by relaying the function
+// calls involved through this external layer https://stackoverflow.com/questions/45511465/purpose-of-invoke-functions-generated-by-emscripten
+//
+// Update: After disabling emscripten's asyncify to reduce .wasm size (by 70%!)
+// the dynCall_* exports disappeared, and are replaced by functions accessed
+// through __indirect_function_table
+const invoke = (index, ...args) => {
+  var sp = upython_instance.exports.stackSave()
+  try {
+    return upython_instance.exports.__indirect_function_table.get(index)(...args)
+  } catch(e) {
+    upython_instance.exports.stackRestore(sp)
+    if (e !== e+0) throw e
+      upython_instance.exports.setThrew(1, 0)
+  }
+}
 
-    /**
-     * @param {number} ptr
-     * @param {string} type
-     */
-  function getValue(ptr, type) {
-    switch (type) {
-      case 'i32': return HEAP32[((ptr)>>2)];
-      // 64-bit ints not supported, because upython was compiled with
-      // emscripten's WASM_BIGINT flag not set. Additionally, upython offers no
-      // FFI type for i64, so even if WASM_BIGINT is used actually moving them
-      // across the FFI boundary requires using proxy objects
-      case 'float': return HEAPF32[((ptr)>>2)];
-      case 'double': return HEAPF64[((ptr)>>3)];
-      default: throw new TypeError(`invalid type for getValue: ${type}`)
-    }
+const getValue = (ptr, type) => {
+  switch (type) {
+    // 64-bit ints not supported, because upython was compiled with
+    // emscripten's WASM_BIGINT flag not set. Additionally, upython offers no
+    // FFI type for i64, so even if WASM_BIGINT is used actually moving them
+    // across the FFI boundary requires using proxy objects
+    case 'i32'   : return PYMEM_I32[ptr >> 2]
+    case 'float' : return PYMEM_F32[ptr >> 2]
+    case 'double': return PYMEM_F64[ptr >> 3]
+    default: throw new TypeError(`invalid type for getValue: ${type}`)
   }
+}
 
-  
-    /**
-     * @param {number} ptr
-     * @param {number} value
-     * @param {string} type
-     */
-  function setValue(ptr, value, type) {
-    switch (type) {
-      case 'i32': HEAP32[((ptr)>>2)] = value; break;
-      case 'float': HEAPF32[((ptr)>>2)] = value; break;
-      case 'double': HEAPF64[((ptr)>>3)] = value; break;
-      default: throw new TypeError(`invalid type for getValue: ${type}`)
-    }
+const setValue = (ptr, value, type) => {
+  switch (type) {
+    case 'i32'   : PYMEM_I32[ptr >> 2] = value; break
+    case 'float' : PYMEM_F32[ptr >> 2] = value; break
+    case 'double': PYMEM_F64[ptr >> 3] = value; break
+    default: throw new TypeError(`invalid type for getValue: ${type}`)
   }
+}
 
+const UTF8ToString = (pointer, max_length) => {
+  if(pointer === 0) return ''
   
-  
-  function UTF8ToString(pointer, max_length) {
-    if(pointer === 0) return ''
-    
-    // Must use var and not let, due to javascript's bizarre scoping rules
-    for(var length = 0; HEAPU8[pointer + length]; ++length) {
-      // If max_length is undefined this does nothing, that mirros how
-      // emscripten did this
-      if(length >= max_length) break
-    }
-    
-    return Module.UTF8Decoder.decode(HEAPU8.subarray(pointer, pointer + length))
+  // Must use var and not let, due to javascript's bizarre scoping rules
+  for(var length = 0; PYMEM_U8[pointer + length]; ++length) {
+    // If max_length is undefined this does nothing, that mirros how
+    // emscripten did this
+    if(length >= max_length) break
   }
   
-  
-  
-  function stringToUTF8(string, pointer, max_length) {
-    if(typeof max_length !== 'number' || max_length <= 0) return 0
-    
-    // -1 for string null terminator
-    let view = HEAPU8.subarray(pointer, pointer + max_length - 1)
-    
-    let len = Module.UTF8Encoder.encodeInto(string, view).written
-    HEAPU8[pointer + len] = 0 // Null terminator
-    return len + 1
-  }
-  
-  
-  
-  function ___syscall_openat(dirfd, path, flags, varargs) {
-    console.log(`___syscall_openat(dirfd=${dirfd}, path=${path}, flags=${flags}, varargs=${varargs})`)
-    try {
-      path = UTF8ToString(path);
-      if(path[0] !== '/') path = '/' + path
-      console.log(`___syscall_openat path converted to "${path}"`)
-      if(!(path in VFS)) return -1
-      return new VirtualFD(path).value
-    } catch (e) { return -1 }
-  }
+  return UTF8Decoder.decode(PYMEM_U8.subarray(pointer, pointer + length))
+}
 
-  function ___syscall_stat64(path, buf) {
-    console.log(`___syscall_stat64(path=${path}, buf=${buf})`)
-    try {
-      path = UTF8ToString(path)
-      if(path[0] !== '/') path = '/' + path
-      console.log(`___syscall_stat64 path converted to "${path}"`)
-
-      // Format is similar to stat struct from
-      // https://www.man7.org/linux/man-pages/man3/stat.3type.html . However,
-      // the inode # is moved to the end of the struct.
-      //
-      // Offset    Size    Name       Description
-      // 0         4       dev        Idk what this is
-      // 4         4       mode       Only field upython needs (see code)
-      // 8         4       nlink      # of hard links
-      // 12        4       UID
-      // 16        4       GID
-      // 20        4       rdev       Idk what this is
-      // 24        8       size
-      // 32        4       blksize    Block size
-      // 36        4       blocks     Block count (but in 512 B blocks)
-      // 40        16      atim       Time of last access
-      // 56        16      mtim       Time of last modification
-      // 72        16      ctime      Time of last status change
-      // 88        8       ino        Inode #
-      //
-      // The 3 timestamp fields are each 16 bytes (2 64-bit timestamps, idk why
-      // each timestamp field timestamps inside it)
-      HEAPU32.fill(0, buf >> 2, (buf + 92) >> 2)
-      
-      // Mode. It's a bit field, some of it seems to be for file permissions
-      // (but MicroPython ignores that part). MicroPython expects one bit to be
-      // set though (no idea why). Which bit depends on whether path is a file
-      // or folder
-      const is_folder = VFS[path] === null
-      HEAPU32[(buf + 4) >> 2] = path in VFS ? (is_folder ? 0x4000 : 0x8000) : 0
-    } catch (e) { return -1 }
-    
-    return 0
-  }
-
-  function _fd_close(fd) {
-    console.log(`_fd_close(fd=${fd})`)
-    try {
-      VirtualFD.instances[fd] = null
-      return 0;
-    } catch (e) {
-    if (typeof FS == 'undefined' || !(e.name === 'ErrnoError')) throw e;
-    return e.errno;
-  }
-  }
-
-  function _fd_read(fd, iov, iovcnt, pnum) {
-    console.log(`_fd_read(fd=${fd}, iov=${iov}, iovcnt=${iovcnt}, pnum=${pnum})`)
-    if(iovcnt !== 1) throw TypeError(`_fd_read(): parameter iovcnt must be 1`)
-    
-    var ptr = HEAPU32[((iov)>>2)];
-    var len = HEAPU32[(((iov)+(4))>>2)];
-    let virtual_fd = VirtualFD.instances[fd]
-    let virtual_file = VFS[virtual_fd.path]
-    let bytes_to_read = Math.min(len, virtual_file.length - virtual_fd.cursor)
-    for(let i = 0; i < bytes_to_read; ++i) {
-      HEAPU8[ptr + i] = virtual_file[virtual_fd.cursor + i]
-    }
-    virtual_fd.cursor += bytes_to_read
-    HEAPU32[((pnum)>>2)] = bytes_to_read
-    //console.log(`Read ${bytes_to_read} bytes: ${HEAPU8.slice(ptr, ptr + bytes_to_read)}`)
-    
-    return 0
-  }
-
+const stringToUTF8 = (string, pointer, max_length) => {
+  if(typeof max_length !== 'number' || max_length <= 0) return 0
   
-  function _fd_write(fd, iov, iovcnt, pnum) {
-    console.log(`_fd_write(fd=${fd}, iov=${iov}, iovcnt=${iovcnt}, pnum=${pnum})`)
-    if(fd !== 1 && fd !== 2) {
-      throw TypeError(`_fd_write(): parameter fd must be 1 or 2 (writing is ' +
-        'only supported for stdout and stderr)`)
-    }
-    if(iovcnt !== 1) throw TypeError(`_fd_write(): parameter iovcnt must be 1`)
-    
-    var ptr = HEAPU32[((iov)>>2)];
-    var len = HEAPU32[(((iov)+(4))>>2)];
-    let text = new TextDecoder().decode(HEAPU8.slice(ptr, ptr + len))
-    if(fd === 1) VFS.STDOUT(text)
-    if(fd === 2) VFS.STDERR(text)
-    HEAPU32[((pnum)>>2)] = len
-    
-    return 0
-  }
+  // -1 for string null terminator
+  let view = PYMEM_U8.subarray(pointer, pointer + max_length - 1)
+  
+  let len = UTF8Encoder.encodeInto(string, view).written
+  PYMEM_U8[pointer + len] = 0 // Null terminator
+  return len + 1
+}
 
-class NotImplementedError extends Error {
+const ___syscall_openat = (dirfd, path, flags, varargs) => {
+  console.log(`___syscall_openat(dirfd=${dirfd}, path=${path}, flags=${flags}, varargs=${varargs})`)
+  try {
+    path = UTF8ToString(path);
+    if(path[0] !== '/') path = '/' + path
+    console.log(`___syscall_openat path converted to "${path}"`)
+    if(!(path in VFS)) return -1
+    return new VirtualFD(path).value
+  } catch (e) { return -1 }
+}
+
+const ___syscall_stat64 = (path, buf) => {
+  console.log(`___syscall_stat64(path=${path}, buf=${buf})`)
+  try {
+    path = UTF8ToString(path)
+    if(path[0] !== '/') path = '/' + path
+    console.log(`___syscall_stat64 path converted to "${path}"`)
+
+    // Format is similar to stat struct from
+    // https://www.man7.org/linux/man-pages/man3/stat.3type.html . However,
+    // the inode # is moved to the end of the struct.
+    //
+    // Offset    Size    Name       Description
+    // 0         4       dev        Idk what this is
+    // 4         4       mode       Only field upython needs (see code)
+    // 8         4       nlink      # of hard links
+    // 12        4       UID
+    // 16        4       GID
+    // 20        4       rdev       Idk what this is
+    // 24        8       size
+    // 32        4       blksize    Block size
+    // 36        4       blocks     Block count (but in 512 B blocks)
+    // 40        16      atim       Time of last access
+    // 56        16      mtim       Time of last modification
+    // 72        16      ctime      Time of last status change
+    // 88        8       ino        Inode #
+    //
+    // The 3 timestamp fields are each 16 bytes (2 64-bit timestamps, idk why
+    // each timestamp field timestamps inside it)
+    PYMEM_U32.fill(0, buf >> 2, (buf + 92) >> 2)
+    
+    // Mode. It's a bit field, some of it seems to be for file permissions
+    // (but MicroPython ignores that part). MicroPython expects one bit to be
+    // set though (no idea why). Which bit depends on whether path is a file
+    // or folder
+    const is_folder = VFS[path] === null
+    PYMEM_U32[(buf + 4) >> 2] = path in VFS ? (is_folder ? 0x4000 : 0x8000) : 0
+  } catch (e) { return -1 }
+  
+  return 0
+}
+
+const _fd_close = fd => {
+  console.log(`_fd_close(fd=${fd})`)
+  VirtualFD.instances[fd] = null
+  return 0
+}
+
+const _fd_read = (fd, iov, iovcnt, pnum) => {
+  console.log(`_fd_read(fd=${fd}, iov=${iov}, iovcnt=${iovcnt}, pnum=${pnum})`)
+  if(iovcnt !== 1) throw TypeError(`_fd_read(): parameter iovcnt must be 1`)
+  
+  const output_pointer = PYMEM_U32[iov       >> 2]
+  const output_length  = PYMEM_U32[(iov + 4) >> 2]
+  const virtual_fd = VirtualFD.instances[fd]
+  const virtual_file = VFS[virtual_fd.path]
+  const bytes_to_read = Math.min(output_length,
+    virtual_file.length - virtual_fd.cursor)
+  
+  PYMEM_U8.set(
+    virtual_file.slice(virtual_fd.cursor, virtual_fd.cursor + bytes_to_read),
+    output_pointer,
+  )
+  
+  virtual_fd.cursor += bytes_to_read
+  PYMEM_U32[pnum >> 2] = bytes_to_read
+  return 0
+}
+
+const _fd_write = (fd, iov, iovcnt, pnum) => {
+  console.log(`_fd_write(fd=${fd}, iov=${iov}, iovcnt=${iovcnt}, pnum=${pnum})`)
+  if(fd !== 1 && fd !== 2) {
+    throw TypeError(`_fd_write(): parameter fd must be 1 or 2 (writing is ' +
+      'only supported for stdout and stderr)`)
+  }
+  if(iovcnt !== 1) throw TypeError(`_fd_write(): parameter iovcnt must be 1`)
+  
+  const input_pointer = PYMEM_U32[iov       >> 2]
+  const input_length  = PYMEM_U32[(iov + 4) >> 2]
+  const text = new TextDecoder().decode(PYMEM_U8.slice(input_pointer,
+    input_pointer + input_length))
+  
+  if(fd === 1) VFS.STDOUT(text)
+  if(fd === 2) VFS.STDERR(text)
+  
+  PYMEM_U32[((pnum)>>2)] = input_length
+  return 0
+}
+
+export class ParaforgeError extends Error {}
+export class NotImplementedError extends ParaforgeError {
   constructor(message) {
     super(message)
     this.name = 'NotImplementedError'
   }
 }
+
+const MP_JS_EPOCH = Date.now()
+
 const NIE = NotImplementedError
-
-var MP_JS_EPOCH = Date.now();
-
-var wasmImports = {
+const wasmImports = {
   // System call functions expected by emscripten. I only implement the ones
   // needed
   __syscall_chdir     : () => { throw new NIE('__syscall_chdir'     ) },
@@ -415,12 +420,12 @@ var wasmImports = {
   // Emulation of flow control / standard library functions not available in
   // wasm (some of these might be built-in in future wasm versions)
   emscripten_memcpy_js: (dest, src, num) => {
-    HEAPU8.copyWithin(dest, src, src + num)
+    PYMEM_U8.copyWithin(dest, src, src + num)
   },
   emscripten_scan_registers: () => {
     throw new NIE('emscripten_scan_registers')
   },
-  emscripten_resize_heap: () => { throw new NIE('emscripten_resize_heap') },
+  emscripten_resize_heap   : () => { throw new NIE('emscripten_resize_heap') },
   _emscripten_throw_longjmp: () => { throw Infinity },
   invoke_i    : invoke,
   invoke_ii   : invoke,
@@ -433,132 +438,109 @@ var wasmImports = {
   invoke_viii : invoke,
   invoke_viiii: invoke,
   mp_js_random_u32: () => crypto.getRandomValues(new Uint32Array(1))[0],
-  mp_js_ticks_ms: () => Date.now() - MP_JS_EPOCH,
-  mp_js_time_ms: () => Date.now(),
+  mp_js_ticks_ms  : () => Date.now() - MP_JS_EPOCH,
+  mp_js_time_ms   : () => Date.now(),
   
   // This is actually a full implementation of mp_js_hook: emscripten only uses
   // it for node and it's a no-op in browser
   mp_js_hook: () => null,
   
-  // Below is the Python-JS bridge stuff, still needs organizing
-  
-  call0: call,
-  call0_kwarg: () => { throw new NIE('call0_kwarg') },
-  call1: call,
-  call1_kwarg: () => { throw new NIE('call1_kwarg') },
-  call2: call,
-  calln: calln,
-  has_attr: () => { throw new NIE('has_attr') },
-  
-  js_get_len: () => { throw new NIE('js_get_len') },
+  // Python-JS bridge functions expected by emscripten. I only implement the
+  // ones needed
+  lookup_attr         : lookup_attr,
+  has_attr            : () => { throw new NIE('has_attr'            ) },
+  store_attr          : () => { throw new NIE('store_attr'          ) },
+  call0               : call,
+  call1               : call,
+  call2               : call,
+  calln               : calln,
+  call0_kwarg         : () => { throw new NIE('call0_kwarg'         ) },
+  call1_kwarg         : () => { throw new NIE('call1_kwarg'         ) },
+  js_get_len          : () => { throw new NIE('js_get_len'          ) },
   js_reflect_construct: () => { throw new NIE('js_reflect_construct') },
-  js_subscr_int: () => { throw new NIE('js_subscr_int') },
-  js_subscr_load: () => { throw new NIE('js_subscr_load') },
-  js_subscr_store: () => { throw new NIE('js_subscr_store') },
-  js_then_continue: () => { throw new NIE('js_then_continue') },
-  js_then_reject: () => { throw new NIE('js_then_reject') },
-  js_then_resolve: () => { throw new NIE('js_then_resolve') },
-  lookup_attr: lookup_attr,
-  
-  proxy_convert_mp_to_js_then_js_to_js_then_js_to_mp_obj_jsside: () => { throw new NIE('proxy_convert_mp_to_js_then_js_to_js_then_js_to_mp_obj_jsside') },
-  proxy_convert_mp_to_js_then_js_to_mp_obj_jsside: () => { throw new NIE('proxy_convert_mp_to_js_then_js_to_mp_obj_jsside') },
-  store_attr: () => { throw new NIE('store_attr') },
-};
+  js_subscr_int       : () => { throw new NIE('js_subscr_int'       ) },
+  js_subscr_load      : () => { throw new NIE('js_subscr_load'      ) },
+  js_subscr_store     : () => { throw new NIE('js_subscr_store'     ) },
+  js_then_continue    : () => { throw new NIE('js_then_continue'    ) },
+  js_then_reject      : () => { throw new NIE('js_then_reject'      ) },
+  js_then_resolve     : () => { throw new NIE('js_then_resolve'     ) },
+  proxy_convert_mp_to_js_then_js_to_js_then_js_to_mp_obj_jsside: () => {
+    throw new NIE('proxy_convert_mp_to_js_then_js_to_js_then_js_to_mp_obj_' +
+      'jsside')
+  },
+  proxy_convert_mp_to_js_then_js_to_mp_obj_jsside: () => {
+    throw new NIE('proxy_convert_mp_to_js_then_js_to_mp_obj_jsside')
+  },
+}
 
-// invoke_* and dynCall_* are actually for internal use by the MicroPython
-// .wasm. Because wasm doesn't have goto or exception support built-in,
-// emscripten borrows them from the host environment by relaying the function
-// calls involved through this external layer https://stackoverflow.com/questions/45511465/purpose-of-invoke-functions-generated-by-emscripten
-//
-// Update: After disabling emscripten's asyncify to reduce .wasm size (by 70%!)
-// the dynCall_* exports disappeared, and are replaced by functions accessed
-// through __indirect_function_table
-function invoke(index, ...args) {
-  var sp = Module.instance.exports.stackSave()
+const UTF8Encoder = new TextEncoder('utf8')
+const UTF8Decoder = new TextDecoder('utf8')
+
+let rust_instance    = null
+let upython_instance = null
+
+let PYMEM_U8  = null
+let PYMEM_I32 = null
+let PYMEM_U32 = null
+let PYMEM_F32 = null
+let PYMEM_F64 = null
+
+export const init = async args => {
+  const { script_name, script_contents } = args
+  
+  VFS[`/${script_name}.py`] = new Uint8Array(script_contents)
+  
+  rust_instance    = await WebAssembly.instantiate(rust_module)
+  upython_instance = await WebAssembly.instantiate(upython_module, {
+    'env': wasmImports,
+    'wasi_snapshot_preview1': wasmImports,
+  })
+  
+  rust_instance.exports.init()
+  
+  const upython_buffer = upython_instance.exports.memory.buffer
+  PYMEM_U8  = new Uint8Array  (upython_buffer)
+  PYMEM_I32 = new Int32Array  (upython_buffer)
+  PYMEM_U32 = new Uint32Array (upython_buffer)
+  PYMEM_F32 = new Float32Array(upython_buffer)
+  PYMEM_F64 = new Float64Array(upython_buffer)
+  
+  // 1 MB heap size used by upython's default build, seems good enough
+  const upython_heap_size = 1024*1024
+  
+  upython_instance.exports.__wasm_call_ctors()
+  upython_instance.exports.mp_js_init(upython_heap_size)
+  upython_instance.exports.proxy_c_init()
+}
+
+export const runPython = code => {
+  const mystery_pointer = upython_instance.exports.malloc(3 * 4)
+  const stack = upython_instance.exports.stackSave()
+  
   try {
-    return Module.instance.exports.__indirect_function_table.get(index)(...args)
-  } catch(e) {
-    Module.instance.exports.stackRestore(sp)
-    if (e !== e+0) throw e
-    Module.instance.exports.setThrew(1, 0)
+    const utf8 = UTF8Encoder.encode(code + '\0')
+    const string_pointer = upython_instance.exports.stackAlloc(utf8.length)
+    PYMEM_U8.set(utf8, string_pointer)
+    
+    upython_instance.exports.mp_js_do_exec(string_pointer, mystery_pointer)
+  } finally {
+    upython_instance.exports.stackRestore(stack)
+  }
+  
+  try {
+    return proxy_convert_mp_to_js_obj_jsside(mystery_pointer)
+  } finally {
+    upython_instance.exports.free(mystery_pointer)
   }
 }
 
-const rust_instance = await WebAssembly.instantiate(rust_module)
-
-const upython_instance = await WebAssembly.instantiate(upython_module, {
-  'env': wasmImports,
-  'wasi_snapshot_preview1': wasmImports,
-})
-
-Module.module = upython_module
-Module.instance = upython_instance
-Module.UTF8Encoder = new TextEncoder('utf8')
-Module.UTF8Decoder = new TextDecoder('utf8')
-
-Module.setValue = setValue;
-Module.getValue = getValue;
-Module.UTF8ToString = UTF8ToString;
-Module.stringToUTF8 = stringToUTF8;
-
-const buffer = Module.instance.exports.memory.buffer
-const HEAPU8  = Module.HEAPU8  = new Uint8Array  (buffer)
-const HEAP32  = Module.HEAP32  = new Int32Array  (buffer)
-const HEAPU32 = Module.HEAPU32 = new Uint32Array (buffer)
-const HEAPF32 = Module.HEAPF32 = new Float32Array(buffer)
-const HEAPF64 = Module.HEAPF64 = new Float64Array(buffer)
-
-Module.instance.exports.__wasm_call_ctors()
-
-
-
-
-// Got two WebAssembly modules with isntances now...time to try running a
-// paraforge PoC!
-rust_instance.exports.init()
-Module.rust_instance = rust_instance
-
-
-
-return Module
-}
-
-export async function loadMicroPython() {
-    const heapsize = 1024*1024
-    
-    const Module = await _createMicroPythonModule();
-    globalThis.Module = Module;
-    Module.instance.exports.mp_js_init(heapsize)
-    Module.instance.exports.proxy_c_init()
-    return {
-        runPython(code) {
-            const mystery_pointer = Module.instance.exports.malloc(3 * 4);
-            const stack = Module.instance.exports.stackSave();
-            
-            try {
-              const utf8 = Module.UTF8Encoder.encode(code + '\0')
-              const string_pointer = 
-                Module.instance.exports.stackAlloc(utf8.length);
-              Module.HEAPU8.set(utf8, string_pointer)
-              
-              Module.instance.exports.mp_js_do_exec(string_pointer, mystery_pointer);
-            } finally {
-              Module.instance.exports.stackRestore(stack)
-            }
-            
-            return proxy_convert_mp_to_js_obj_jsside_with_free(mystery_pointer);
-        },
-        gen(args_) {
-          const { script_name, script_contents, generator, args } = args_
-          
-          VFS[`/${script_name}.py`] = new Uint8Array(script_contents)
-          
-          return this.runPython(`
-            import ${script_name}
-            ${script_name}.gen_${generator}(${args})
-          `)
-        },
-    };
+export const gen = args_ => {
+  const { script_name, generator, args } = args_
+  
+  return runPython(`
+    import ${script_name}
+    ${script_name}.gen_${generator}(${args})
+  `)
 }
 
 // These constants should match the constants in proxy_c.c.
@@ -604,42 +586,42 @@ function proxy_convert_js_to_mp_obj_jsside(js_obj, out, force_float=false) {
     } else if (typeof js_obj === "number") {
         if (Number.isInteger(js_obj) && force_float == false) {
             kind = PROXY_KIND_JS_INTEGER;
-            Module.setValue(out + 4, js_obj, "i32");
+            setValue(out + 4, js_obj, "i32");
         } else {
             kind = PROXY_KIND_JS_DOUBLE;
             // double must be stored to an address that's a multiple of 8
             const temp = (out + 4) & ~7;
-            Module.setValue(temp, js_obj, "double");
-            const double_lo = Module.getValue(temp, "i32");
-            const double_hi = Module.getValue(temp + 4, "i32");
-            Module.setValue(out + 4, double_lo, "i32");
-            Module.setValue(out + 8, double_hi, "i32");
+            setValue(temp, js_obj, "double");
+            const double_lo = getValue(temp, "i32");
+            const double_hi = getValue(temp + 4, "i32");
+            setValue(out + 4, double_lo, "i32");
+            setValue(out + 8, double_hi, "i32");
         }
     } else if (typeof js_obj === "string") {
         kind = PROXY_KIND_JS_STRING;
         const len = new TextEncoder().encode(js_obj).length
-        const buf = Module.instance.exports.malloc(len + 1);
-        Module.stringToUTF8(js_obj, buf, len + 1);
-        Module.setValue(out + 4, len, "i32");
-        Module.setValue(out + 8, buf, "i32");
+        const buf = upython_instance.exports.malloc(len + 1);
+        stringToUTF8(js_obj, buf, len + 1);
+        setValue(out + 4, len, "i32");
+        setValue(out + 8, buf, "i32");
     } else {
         kind = PROXY_KIND_JS_OBJECT;
         const id = proxy_js_ref.length;
         proxy_js_ref[id] = js_obj;
-        Module.setValue(out + 4, id, "i32");
+        setValue(out + 4, id, "i32");
     }
-    Module.setValue(out + 0, kind, "i32");
+    setValue(out + 0, kind, "i32");
 }
 
 function proxy_convert_mp_to_js_obj_jsside(value) {
-    const kind = Module.getValue(value, "i32");
+    const kind = getValue(value, "i32");
     let obj;
     if (kind === PROXY_KIND_MP_EXCEPTION) {
         // Exception
-        const str_len = Module.getValue(value + 4, "i32");
-        const str_ptr = Module.getValue(value + 8, "i32");
-        const str = Module.UTF8ToString(str_ptr, str_len);
-        Module.instance.exports.free(str_ptr);
+        const str_len = getValue(value + 4, "i32");
+        const str_ptr = getValue(value + 8, "i32");
+        const str = UTF8ToString(str_ptr, str_len);
+        upython_instance.exports.free(str_ptr);
         const str_split = str.split("\x04");
         throw new PythonError(str_split[0], str_split[1]);
     }
@@ -652,28 +634,22 @@ function proxy_convert_mp_to_js_obj_jsside(value) {
         obj = null;
     } else if (kind === PROXY_KIND_MP_INT) {
         // int
-        obj = Module.getValue(value + 4, "i32");
+        obj = getValue(value + 4, "i32");
     } else if (kind === PROXY_KIND_MP_FLOAT) {
         // float
         // double must be loaded from an address that's a multiple of 8
         const temp = (value + 4) & ~7;
-        const double_lo = Module.getValue(value + 4, "i32");
-        const double_hi = Module.getValue(value + 8, "i32");
-        Module.setValue(temp, double_lo, "i32");
-        Module.setValue(temp + 4, double_hi, "i32");
-        obj = Module.getValue(temp, "double");
+        const double_lo = getValue(value + 4, "i32");
+        const double_hi = getValue(value + 8, "i32");
+        setValue(temp, double_lo, "i32");
+        setValue(temp + 4, double_hi, "i32");
+        obj = getValue(temp, "double");
     } else if (kind === PROXY_KIND_MP_STR) {
         // str
-        const str_len = Module.getValue(value + 4, "i32");
-        const str_ptr = Module.getValue(value + 8, "i32");
-        obj = Module.UTF8ToString(str_ptr, str_len);
+        const str_len = getValue(value + 4, "i32");
+        const str_ptr = getValue(value + 8, "i32");
+        obj = UTF8ToString(str_ptr, str_len);
     }
     //alert(`proxy_convert_mp_to_js_obj_jsside(value=${value}) -> ${obj}`)
     return obj;
-}
-
-function proxy_convert_mp_to_js_obj_jsside_with_free(value) {
-    const ret = proxy_convert_mp_to_js_obj_jsside(value);
-    Module.instance.exports.free(value);
-    return ret;
 }
