@@ -2,7 +2,7 @@
 // Preload HTTP Assets //
 /////////////////////////
 
-/*const rust_module_promise = (async () => {
+const rust_module_promise = (async () => {
   const response = await fetch('../paraforge/paraforge.wasm',
     { cache: 'no-store' })
   return await WebAssembly.compileStreaming(response)
@@ -15,12 +15,12 @@ const upython_module_promise = (async () => {
 })()
 
 const worker_file_promise = (async () => {
-  const response = await fetch('paraforge-worker.js', { cache: 'no-store' })
+  const response = await fetch('micropython-reduced.js', { cache: 'no-store' })
   // The worker response must be converted into text before being converted into
   // a file object, otherwise browser console will not provide error information
   // for error that occur inside the worker thread
   const text = await response.text()
-  return URL.createObjectURL(new File([text], 'paraforge-worker.js'))
+  return URL.createObjectURL(new File([text], 'micropython-reduced.js'))
 })()
 
 const paraforge_init_py_promise = (async () => {
@@ -39,38 +39,115 @@ const [
   upython_module_promise,
   worker_file_promise,
   paraforge_init_py_promise,
-])*/
+])
 
 ////////////////////////////////////
 // Paraforge Class (Experimental) //
 ////////////////////////////////////
 
-/*export class Paraforge {
+export class Paraforge extends EventTarget {
   constructor() {
-    this.worker = new Worker(worker_file, { type: 'module' })
+    super()
     
-    this.worker.onerror = e => {
+    this._worker = new Worker(worker_file, { type: 'module' })
+    
+    this._worker.onerror = e => {
       console.log('An error happened in a worker. Good luck getting any ' +
         'debugging info.')
       throw e
     }
     
-    this.worker.onmessage = message => {
-      console.log(message.data)
+    this._worker.onmessage = message => {
+      //console.log(message.data)
+      
+      if(message.data.function) {
+        if(message.data.error_code === 0) this._resolve(message.data.result)
+        else this._reject(message.data.error_code)
+        
+        this._resolve = null
+        this._reject = null
+      }
+      
+      if(message.data.event) {
+        switch(message.data.event) {
+          case 'stdout':
+            this.dispatchEvent(new StdoutEvent(message.data.line))
+            break
+          case 'stderr':
+            this.dispatchEvent(new StdoutEvent(message.data.line))
+            break
+          default: throw new Error('idk')
+        }
+      }
     }
     
-    this.worker.postMessage({
-      type: 'init',
+    this._resolve = null
+    this._reject = null
+  }
+  
+  init(script_name, script_contents) {
+    if(this._resolve) throw new Error('Worker already running!')
+    
+    this._worker.postMessage({
+      function: 'init',
       rust_module,
+      upython_module,
+      paraforge_init_py,
+      script_name,
+      script_contents,
+    })
+    
+    return new Promise((resolve, reject) => {
+      this._resolve = resolve
+      this._reject = reject
     })
   }
   
-  gen() {
-    this.worker.postMessage(['helloooooo'])
+  runPython(code) {
+    if(this._resolve) throw new Error('Worker already running!')
+    
+    this._worker.postMessage({
+      function: 'runPython',
+      code,
+    })
+    
+    return new Promise((resolve, reject) => {
+      this._resolve = resolve
+      this._reject = reject
+    })
+  }
+  
+  gen(script_name, generator, args) {
+    if(this._resolve) throw new Error('Worker already running!')
+    
+    this._worker.postMessage({
+      function: 'gen',
+      script_name,
+      generator,
+      args,
+    })
+    
+    return new Promise((resolve, reject) => {
+      this._resolve = resolve
+      this._reject = reject
+    })
+  }
+  
+  serialize() {
+    if(this._resolve) throw new Error('Worker already running!')
+    
+    this._worker.postMessage({
+      function: 'serialize',
+    })
+    
+    return new Promise((resolve, reject) => {
+      this._resolve = resolve
+      this._reject = reject
+    })
   }
 }
 
-export const event_emitter = new EventTarget()*/
+export const event_emitter = new EventTarget()
 
 /////////////////////////
 // Virtual File System //
@@ -93,9 +170,10 @@ export class StderrEvent extends ParaforgeEvent {
 }
 
 export let VFS = {
-  STDOUT: line => self.postMessage({ event: 'stdout', line }),
-  STDERR: line => self.postMessage({ event: 'stderr', line }),
+  STDOUT: line => event_emitter.dispatchEvent(new StdoutEvent(line)),
+  STDERR: line => event_emitter.dispatchEvent(new StderrEvent(line)),
   '/paraforge': null,
+  '/paraforge/__init__.py': paraforge_init_py,
 }
 
 class VirtualFD {
@@ -142,20 +220,14 @@ const string_transport = (handle, string) => {
   }
 }
 
-self.serialize = async () => {
+export const serialize = () => {
   const fat_pointer =  rust_instance.exports.serialize()
   const offset = Number(fat_pointer >> BigInt(32))
   const size = Number(fat_pointer & BigInt(0xffffffff))
   console.log(`offset=${offset}, size=${size}`)
   
   const memory = new Uint8Array(rust_instance.exports.memory.buffer)
-  const result = memory.slice(offset, offset + size)
-  
-  self.postMessage({
-    function: 'serialize',
-    result,
-    error_code: 0,
-  })
+  return memory.slice(offset, offset + size)
 }
 
 const py_rust_call = (name, ...args) => {
@@ -490,22 +562,11 @@ let PYMEM_U32 = null
 let PYMEM_F32 = null
 let PYMEM_F64 = null
 
-self.onmessage = e => {
-  //console.log(e.data.function)
-  //console.log(self.init)
-  self[e.data.function](e.data)
-}
+export let paraforge_class_instance = null
 
-self.init = async args => {
-  const {
-    rust_module,
-    upython_module,
-    paraforge_init_py,
-    script_name,
-    script_contents,
-  } = args
+export const init = async args => {
+  const { script_name, script_contents } = args
   
-  VFS['/paraforge/__init__.py'] = paraforge_init_py
   VFS[`/${script_name}.py`] = new Uint8Array(script_contents)
   
   rust_instance    = await WebAssembly.instantiate(rust_module)
@@ -530,16 +591,11 @@ self.init = async args => {
   upython_instance.exports.mp_js_init(upython_heap_size)
   upython_instance.exports.proxy_c_init()
   
-  self.postMessage({
-    function: 'init',
-    result: null,
-    error_code: 0,
-  })
+  paraforge_class_instance = new Paraforge()
+  await paraforge_class_instance.init(script_name, script_contents)
 }
 
-self.runPython = async args => {
-  const { code } = args
-  
+export const runPython = async code => {
   const mystery_pointer = upython_instance.exports.malloc(3 * 4)
   const stack = upython_instance.exports.stackSave()
   
@@ -554,19 +610,14 @@ self.runPython = async args => {
   }
   
   try {
-    const result = proxy_convert_mp_to_js_obj_jsside(mystery_pointer)
-    
-    self.postMessage({
-      function: 'runPython (or maybe gen)',
-      result,
-      error_code: 0,
-    })
+    await paraforge_class_instance.runPython(code)
+    return proxy_convert_mp_to_js_obj_jsside(mystery_pointer)
   } finally {
     upython_instance.exports.free(mystery_pointer)
   }
 }
 
-self.gen = args_ => {
+export const gen = args_ => {
   const { script_name, generator, args } = args_
   
   return runPython(`
