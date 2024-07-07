@@ -1,96 +1,6 @@
 /////////////////////////
-// Preload HTTP Assets //
-/////////////////////////
-
-/*const rust_module_promise = (async () => {
-  const response = await fetch('../paraforge/paraforge.wasm',
-    { cache: 'no-store' })
-  return await WebAssembly.compileStreaming(response)
-})()
-
-const upython_module_promise = (async () => {
-  const response = await fetch('micropython.wasm',
-    { cache: 'no-store' })
-  return await WebAssembly.compileStreaming(response)
-})()
-
-const worker_file_promise = (async () => {
-  const response = await fetch('paraforge-worker.js', { cache: 'no-store' })
-  // The worker response must be converted into text before being converted into
-  // a file object, otherwise browser console will not provide error information
-  // for error that occur inside the worker thread
-  const text = await response.text()
-  return URL.createObjectURL(new File([text], 'paraforge-worker.js'))
-})()
-
-const paraforge_init_py_promise = (async () => {
-  const response = await fetch('../paraforge/__init__.py', { cache: 'reload' })
-  const array_buffer = await response.arrayBuffer()
-  return new Uint8Array(array_buffer)
-})()
-
-const [
-  rust_module,
-  upython_module,
-  worker_file,
-  paraforge_init_py,
-] = await Promise.all([
-  rust_module_promise,
-  upython_module_promise,
-  worker_file_promise,
-  paraforge_init_py_promise,
-])*/
-
-////////////////////////////////////
-// Paraforge Class (Experimental) //
-////////////////////////////////////
-
-/*export class Paraforge {
-  constructor() {
-    this.worker = new Worker(worker_file, { type: 'module' })
-    
-    this.worker.onerror = e => {
-      console.log('An error happened in a worker. Good luck getting any ' +
-        'debugging info.')
-      throw e
-    }
-    
-    this.worker.onmessage = message => {
-      console.log(message.data)
-    }
-    
-    this.worker.postMessage({
-      type: 'init',
-      rust_module,
-    })
-  }
-  
-  gen() {
-    this.worker.postMessage(['helloooooo'])
-  }
-}
-
-export const event_emitter = new EventTarget()*/
-
-/////////////////////////
 // Virtual File System //
 /////////////////////////
-
-export class ParaforgeEvent extends Event {}
-
-export class StdoutEvent extends ParaforgeEvent {
-  constructor(line) {
-    super('stdout')
-    this.line = line
-  }
-}
-
-export class StderrEvent extends ParaforgeEvent {
-  constructor(line) {
-    super('stderr')
-    this.line = line
-  }
-}
 
 export let VFS = {
   STDOUT: line => self.postMessage({ event: 'stdout', line }),
@@ -143,10 +53,12 @@ const string_transport = (handle, string) => {
 }
 
 self.serialize = async () => {
+  if(verbose) console.log(`serialize()`)
   const fat_pointer =  rust_instance.exports.serialize()
   const offset = Number(fat_pointer >> BigInt(32))
   const size = Number(fat_pointer & BigInt(0xffffffff))
-  console.log(`offset=${offset}, size=${size}`)
+  if(verbose) console.log(`serialize() found model at offset=${offset}, ` +
+    `size=${size}`)
   
   const memory = new Uint8Array(rust_instance.exports.memory.buffer)
   const result = memory.slice(offset, offset + size)
@@ -290,22 +202,23 @@ const stringToUTF8 = (string, pointer, max_length) => {
 }
 
 const ___syscall_openat = (dirfd, path, flags, varargs) => {
-  console.log(`___syscall_openat(dirfd=${dirfd}, path=${path}, flags=${flags}, varargs=${varargs})`)
+  if(verbose) console.log(`___syscall_openat(dirfd=${dirfd}, path=${path}, ` +
+    `flags=${flags}, varargs=${varargs})`)
   try {
     path = UTF8ToString(path);
     if(path[0] !== '/') path = '/' + path
-    console.log(`___syscall_openat path converted to "${path}"`)
+    if(verbose) console.log(`___syscall_openat path converted to "${path}"`)
     if(!(path in VFS)) return -1
     return new VirtualFD(path).value
   } catch (e) { return -1 }
 }
 
 const ___syscall_stat64 = (path, buf) => {
-  console.log(`___syscall_stat64(path=${path}, buf=${buf})`)
+  if(verbose) console.log(`___syscall_stat64(path=${path}, buf=${buf})`)
   try {
     path = UTF8ToString(path)
     if(path[0] !== '/') path = '/' + path
-    console.log(`___syscall_stat64 path converted to "${path}"`)
+    if(verbose) console.log(`___syscall_stat64 path converted to "${path}"`)
 
     // Format is similar to stat struct from
     // https://www.man7.org/linux/man-pages/man3/stat.3type.html . However,
@@ -342,13 +255,14 @@ const ___syscall_stat64 = (path, buf) => {
 }
 
 const _fd_close = fd => {
-  console.log(`_fd_close(fd=${fd})`)
+  if(verbose) console.log(`_fd_close(fd=${fd})`)
   VirtualFD.instances[fd] = null
   return 0
 }
 
 const _fd_read = (fd, iov, iovcnt, pnum) => {
-  console.log(`_fd_read(fd=${fd}, iov=${iov}, iovcnt=${iovcnt}, pnum=${pnum})`)
+  if(verbose) console.log(`_fd_read(fd=${fd}, iov=${iov}, iovcnt=${iovcnt}, ` +
+    `pnum=${pnum})`)
   if(iovcnt !== 1) throw TypeError(`_fd_read(): parameter iovcnt must be 1`)
   
   const output_pointer = PYMEM_U32[iov       >> 2]
@@ -369,7 +283,7 @@ const _fd_read = (fd, iov, iovcnt, pnum) => {
 }
 
 const _fd_write = (fd, iov, iovcnt, pnum) => {
-  console.log(`_fd_write(fd=${fd}, iov=${iov}, iovcnt=${iovcnt}, pnum=${pnum})`)
+  if(verbose) console.log(`_fd_write(fd=${fd}, iov=${iov}, iovcnt=${iovcnt}, pnum=${pnum})`)
   if(fd !== 1 && fd !== 2) {
     throw TypeError(`_fd_write(): parameter fd must be 1 or 2 (writing is ' +
       'only supported for stdout and stderr)`)
@@ -483,6 +397,7 @@ const UTF8Decoder = new TextDecoder('utf8')
 
 let rust_instance    = null
 let upython_instance = null
+let verbose = false
 
 let PYMEM_U8  = null
 let PYMEM_I32 = null
@@ -504,6 +419,7 @@ self.init = async args => {
     script_name,
     script_contents,
   } = args
+  verbose = args.verbose
   
   VFS['/paraforge/__init__.py'] = paraforge_init_py
   VFS[`/${script_name}.py`] = new Uint8Array(script_contents)

@@ -12,33 +12,27 @@
 import * as paraforge from './paraforge.js'
 window.paraforge = paraforge
 
-paraforge.event_emitter.addEventListener('stderr', e => {
-  document.getElementById('micropython-stdout').innerHTML +=
-    `<text style="color:#f00">${e.line}</text>`
-})
-paraforge.event_emitter.addEventListener('stdout', e => {
-  document.getElementById('micropython-stdout').innerHTML += e.line
-})
-
 let res = await fetch('../examples/first_model.pf.py', { cache: 'reload' })
 let res_blob = await res.blob()
 let res_array_buffer = await res_blob.arrayBuffer()
 let first_model_py = new Uint8Array(res_array_buffer)
 
-await paraforge.init({
-  script_name: 'first_model',
-  script_contents: first_model_py,
-})
-paraforge.paraforge_class_instance.addEventListener('stdout', e => {
+const paraforge_class_instance = new paraforge.Paraforge()
+await paraforge_class_instance.init(false, 'first_model', first_model_py)
+
+paraforge_class_instance.addEventListener('stderr', e => {
   document.getElementById('micropython-stdout').innerHTML +=
-    `<text style="color:#0f0">${e.line}</text>`
+    `<text style="color:#f00">${e.line}</text>`
 })
-await paraforge.gen({
-  script_name: 'first_model',
-  generator: 'first_model',
-  args: [],
+paraforge_class_instance.addEventListener('stdout', e => {
+  document.getElementById('micropython-stdout').innerHTML += e.line
 })
-await paraforge.runPython(`
+
+await paraforge_class_instance.runPython(`
+  import ${'first_model'}
+  ${'first_model'}.gen_${'first_model'}(${[]})
+`)
+await paraforge_class_instance.runPython(`
   import js
   print(dir(js))
   print(js.test_function(4))
@@ -68,7 +62,7 @@ res = await fetch('../test-files/first_model.glb', { cache: 'reload' })
 res_blob = await res.blob()
 res_array_buffer = await res_blob.arrayBuffer()
 window.expected_glb = new Uint8Array(res_array_buffer)
-window.actual_glb = await paraforge.paraforge_class_instance.serialize()
+window.actual_glb = await paraforge_class_instance.serialize()
 window.decoder = new TextDecoder()
 console.log('Is the actual .glb as expected?')
 console.log(decoder.decode(expected_glb) == decoder.decode(actual_glb))
