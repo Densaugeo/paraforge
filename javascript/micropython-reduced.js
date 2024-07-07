@@ -1,11 +1,87 @@
+/**
+ * Sends log event, which main thread will print to console if priority <=
+ * verbosity
+ * 
+ * Priority guidelines:
+ * 0 - For debug/development only
+ * 1 - Life cycle events, messages into/out of the worker thread
+ * 2 - Internal function calls
+ * 3 - Details inside funciton calls
+ * 
+ * @param priority {number} Lower values = more important
+ * @param line {string} Message to log
+ */
+const log = (priority, line) => {
+  self.postMessage({ event: 'log', priority, line })
+}
+
+////////////////////
+// Setup for Init //
+////////////////////
+
+// Most of the traditional init work happens later on, in each relevant section.
+// This section sets up messaging to the main thread and retrieves the init
+// arguments supplied from the main thread
+
+self.addEventListener('message', async e => {
+  const args_string = Object.keys(e.data.args).map(
+    key => `${key}=${e.data.args[key]}`
+  ).join(', ')
+  log(1, `Executing call from main thread: ${e.data.function}(${args_string})`)
+  
+  const result = await self[e.data.function](e.data.args)
+  
+  self.postMessage({
+    function: e.data.function,
+    result,
+    error_code: 0,
+  })
+})
+
+let init_args_resolve
+const init_args_promise = new Promise((resolve, _reject) => {
+  init_args_resolve = resolve
+})
+
+let init_return_resolve
+const init_return_promise = new Promise((resolve, _reject) => {
+  init_return_resolve = resolve
+})
+
+self.init = args => {
+  delete self.init
+  init_args_resolve(args)
+  return init_return_promise
+}
+
+const init_args = await init_args_promise
+
 /////////////////////////
 // Virtual File System //
 /////////////////////////
 
-export let VFS = {
-  STDOUT: line => self.postMessage({ event: 'stdout', line }),
-  STDERR: line => self.postMessage({ event: 'stderr', line }),
+let stdout_buffer = '', stderr_buffer = ''
+
+const VFS = {
+  STDOUT: message => {
+    stdout_buffer += message
+    
+    for(let i; i = stdout_buffer.indexOf('\n') + 1;) {
+      self.postMessage({ event: 'stdout', line: stdout_buffer.slice(0, i) })
+      stdout_buffer = stdout_buffer.slice(i)
+    }
+  },
+  STDERR: message => {
+    stderr_buffer += message
+    
+    for(let i; i = stderr_buffer.indexOf('\n') + 1;) {
+      self.postMessage({ event: 'stderr', line: stderr_buffer.slice(0, i) })
+      stderr_buffer = stderr_buffer.slice(i)
+    }
+  },
   '/paraforge': null,
+  '/paraforge/__init__.py': init_args.paraforge_init_py,
+  [`/${init_args.script_name}.py`]: new Uint8Array(init_args.script_contents),
 }
 
 class VirtualFD {
@@ -27,18 +103,12 @@ class VirtualFD {
 // aren't a concern because the VFS is read-only (for the wasm VM)
 VirtualFD.instances = ['STDIN', 'STDOUT', 'STDERR']
 
+/////////////////////////////
+// Rust WebAssembly Module //
+/////////////////////////////
 
-
-
-
-
-const test_function = foo => {
-  //throw new Error('asdf')
-  return foo*2
-}
-const test_string_function = string => {
-  return string + ' functionized'
-}
+const rust_instance = await WebAssembly.instantiate(init_args.rust_module)
+rust_instance.exports.init()
 
 const string_transport = (handle, string) => {
   const raw_bytes = new TextEncoder().encode(string).slice(0, 64)
@@ -52,40 +122,30 @@ const string_transport = (handle, string) => {
   }
 }
 
-self.serialize = async () => {
-  if(verbose) console.log(`serialize()`)
-  const fat_pointer =  rust_instance.exports.serialize()
-  const offset = Number(fat_pointer >> BigInt(32))
-  const size = Number(fat_pointer & BigInt(0xffffffff))
-  if(verbose) console.log(`serialize() found model at offset=${offset}, ` +
-    `size=${size}`)
-  
-  const memory = new Uint8Array(rust_instance.exports.memory.buffer)
-  const result = memory.slice(offset, offset + size)
-  
-  self.postMessage({
-    function: 'serialize',
-    result,
-    error_code: 0,
-  })
-}
-
 const py_rust_call = (name, ...args) => {
+  log(2, `py_rust_call(name=${name}, args=${args})`)
+  
   return Number(rust_instance.exports[name](...args))
 }
 
-let proxy_js_ref = [{
-  // Test functions
-  test_function, test_string_function,
+self.serialize = async () => {
+  const fat_pointer =  rust_instance.exports.serialize()
+  const offset = Number(fat_pointer >> BigInt(32))
+  const size = Number(fat_pointer & BigInt(0xffffffff))
+  log(3, `serialize() found model at offset=${offset}, size=${size}`)
   
-  // Real functions
+  const memory = new Uint8Array(rust_instance.exports.memory.buffer)
+  return memory.slice(offset, offset + size)
+}
+
+////////////////////////////////////
+// MicroPython WebAssembly Module //
+////////////////////////////////////
+
+const proxy_js_ref = [{
   string_transport,
   py_rust_call,
 }]
-
-//////////////////////////////////////
-// Functions Expected by Emscripten //
-//////////////////////////////////////
 
 const lookup_attr = (js_handle, name_pointer, result_pointer) => {
   // js_handle is used by emscripten to designate which JS object to look up
@@ -112,7 +172,7 @@ const call = (function_handle, ...pointers) => {
   // All other pointers are for argument values
   const translated_args = pointers.map(proxy_convert_mp_to_js_obj_jsside)
   
-  const ret = proxy_js_ref[function_handle](...translated_args);
+  const ret = proxy_js_ref[function_handle](...translated_args)
   
   // Use force_float option because paraforge.wasm's return types are all
   // i64...but micropython.wasm only recognizes i32 at FFI boundary. Luckily,
@@ -202,23 +262,25 @@ const stringToUTF8 = (string, pointer, max_length) => {
 }
 
 const ___syscall_openat = (dirfd, path, flags, varargs) => {
-  if(verbose) console.log(`___syscall_openat(dirfd=${dirfd}, path=${path}, ` +
-    `flags=${flags}, varargs=${varargs})`)
+  log(2, `___syscall_openat(dirfd=${dirfd}, path=${path}, flags=${flags}, ` +
+    `varargs=${varargs})`)
+  
   try {
     path = UTF8ToString(path);
     if(path[0] !== '/') path = '/' + path
-    if(verbose) console.log(`___syscall_openat path converted to "${path}"`)
+    log(3, `___syscall_openat path converted to "${path}"`)
     if(!(path in VFS)) return -1
     return new VirtualFD(path).value
   } catch (e) { return -1 }
 }
 
 const ___syscall_stat64 = (path, buf) => {
-  if(verbose) console.log(`___syscall_stat64(path=${path}, buf=${buf})`)
+  log(2, `___syscall_stat64(path=${path}, buf=${buf})`)
+  
   try {
     path = UTF8ToString(path)
     if(path[0] !== '/') path = '/' + path
-    if(verbose) console.log(`___syscall_stat64 path converted to "${path}"`)
+    log(3, `___syscall_stat64 path converted to "${path}"`)
 
     // Format is similar to stat struct from
     // https://www.man7.org/linux/man-pages/man3/stat.3type.html . However,
@@ -255,14 +317,15 @@ const ___syscall_stat64 = (path, buf) => {
 }
 
 const _fd_close = fd => {
-  if(verbose) console.log(`_fd_close(fd=${fd})`)
+  log(2, `_fd_close(fd=${fd})`)
+  
   VirtualFD.instances[fd] = null
   return 0
 }
 
 const _fd_read = (fd, iov, iovcnt, pnum) => {
-  if(verbose) console.log(`_fd_read(fd=${fd}, iov=${iov}, iovcnt=${iovcnt}, ` +
-    `pnum=${pnum})`)
+  log(2, `_fd_read(fd=${fd}, iov=${iov}, iovcnt=${iovcnt}, pnum=${pnum})`)
+  
   if(iovcnt !== 1) throw TypeError(`_fd_read(): parameter iovcnt must be 1`)
   
   const output_pointer = PYMEM_U32[iov       >> 2]
@@ -283,7 +346,8 @@ const _fd_read = (fd, iov, iovcnt, pnum) => {
 }
 
 const _fd_write = (fd, iov, iovcnt, pnum) => {
-  if(verbose) console.log(`_fd_write(fd=${fd}, iov=${iov}, iovcnt=${iovcnt}, pnum=${pnum})`)
+  log(2, `_fd_write(fd=${fd}, iov=${iov}, iovcnt=${iovcnt}, pnum=${pnum})`)
+  
   if(fd !== 1 && fd !== 2) {
     throw TypeError(`_fd_write(): parameter fd must be 1 or 2 (writing is ' +
       'only supported for stdout and stderr)`)
@@ -395,65 +459,26 @@ const wasmImports = {
 const UTF8Encoder = new TextEncoder('utf8')
 const UTF8Decoder = new TextDecoder('utf8')
 
-let rust_instance    = null
-let upython_instance = null
-let verbose = false
+const upython_instance = await WebAssembly.instantiate(init_args.upython_module, {
+  'env': wasmImports,
+  'wasi_snapshot_preview1': wasmImports,
+})
 
-let PYMEM_U8  = null
-let PYMEM_I32 = null
-let PYMEM_U32 = null
-let PYMEM_F32 = null
-let PYMEM_F64 = null
+const upython_buffer = upython_instance.exports.memory.buffer
+const PYMEM_U8  = new Uint8Array  (upython_buffer)
+const PYMEM_I32 = new Int32Array  (upython_buffer)
+const PYMEM_U32 = new Uint32Array (upython_buffer)
+const PYMEM_F32 = new Float32Array(upython_buffer)
+const PYMEM_F64 = new Float64Array(upython_buffer)
 
-self.onmessage = e => {
-  //console.log(e.data.function)
-  //console.log(self.init)
-  self[e.data.function](e.data)
-}
+// 1 MB heap size used by upython's default build, seems good enough
+const upython_heap_size = 1024*1024
 
-self.init = async args => {
-  const {
-    rust_module,
-    upython_module,
-    paraforge_init_py,
-    script_name,
-    script_contents,
-  } = args
-  verbose = args.verbose
-  
-  VFS['/paraforge/__init__.py'] = paraforge_init_py
-  VFS[`/${script_name}.py`] = new Uint8Array(script_contents)
-  
-  rust_instance    = await WebAssembly.instantiate(rust_module)
-  upython_instance = await WebAssembly.instantiate(upython_module, {
-    'env': wasmImports,
-    'wasi_snapshot_preview1': wasmImports,
-  })
-  
-  rust_instance.exports.init()
-  
-  const upython_buffer = upython_instance.exports.memory.buffer
-  PYMEM_U8  = new Uint8Array  (upython_buffer)
-  PYMEM_I32 = new Int32Array  (upython_buffer)
-  PYMEM_U32 = new Uint32Array (upython_buffer)
-  PYMEM_F32 = new Float32Array(upython_buffer)
-  PYMEM_F64 = new Float64Array(upython_buffer)
-  
-  // 1 MB heap size used by upython's default build, seems good enough
-  const upython_heap_size = 1024*1024
-  
-  upython_instance.exports.__wasm_call_ctors()
-  upython_instance.exports.mp_js_init(upython_heap_size)
-  upython_instance.exports.proxy_c_init()
-  
-  self.postMessage({
-    function: 'init',
-    result: null,
-    error_code: 0,
-  })
-}
+upython_instance.exports.__wasm_call_ctors()
+upython_instance.exports.mp_js_init(upython_heap_size)
+upython_instance.exports.proxy_c_init()
 
-self.runPython = async args => {
+self.python = async args => {
   const { code } = args
   
   const mystery_pointer = upython_instance.exports.malloc(3 * 4)
@@ -470,25 +495,24 @@ self.runPython = async args => {
   }
   
   try {
-    const result = proxy_convert_mp_to_js_obj_jsside(mystery_pointer)
-    
-    self.postMessage({
-      function: 'runPython (or maybe gen)',
-      result,
-      error_code: 0,
-    })
+    return proxy_convert_mp_to_js_obj_jsside(mystery_pointer)
   } finally {
     upython_instance.exports.free(mystery_pointer)
   }
 }
 
-self.gen = args_ => {
-  const { script_name, generator, args } = args_
+self.gen = args => {
+  const { script_name, generator, python_args, python_kwargs } = args
   
-  return runPython(`
+  const passthrough = python_args
+  Object.keys(python_kwargs).forEach(key => {
+    passthrough.push(`${key}=${python_kwargs[key]}`)
+  })
+  
+  python({ code: `
     import ${script_name}
-    ${script_name}.gen_${generator}(${args})
-  `)
+    ${script_name}.gen_${generator}(${passthrough.join(', ')})
+  ` })
 }
 
 // These constants should match the constants in proxy_c.c.
@@ -601,3 +625,5 @@ function proxy_convert_mp_to_js_obj_jsside(value) {
     //alert(`proxy_convert_mp_to_js_obj_jsside(value=${value}) -> ${obj}`)
     return obj;
 }
+
+init_return_resolve(null)

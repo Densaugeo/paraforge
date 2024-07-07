@@ -17,8 +17,8 @@ let res_blob = await res.blob()
 let res_array_buffer = await res_blob.arrayBuffer()
 let first_model_py = new Uint8Array(res_array_buffer)
 
-const paraforge_class_instance = new paraforge.Paraforge()
-await paraforge_class_instance.init(false, 'first_model', first_model_py)
+const paraforge_class_instance = new paraforge.Paraforge(1)
+await paraforge_class_instance.init('first_model', first_model_py)
 
 paraforge_class_instance.addEventListener('stderr', e => {
   document.getElementById('micropython-stdout').innerHTML +=
@@ -28,17 +28,8 @@ paraforge_class_instance.addEventListener('stdout', e => {
   document.getElementById('micropython-stdout').innerHTML += e.line
 })
 
-await paraforge_class_instance.runPython(`
-  import ${'first_model'}
-  ${'first_model'}.gen_${'first_model'}(${[]})
-`)
-await paraforge_class_instance.runPython(`
-  import js
-  print(dir(js))
-  print(js.test_function(4))
-  print(js.test_string_function('string from MicroPython side'))
-  print()
-  
+await paraforge_class_instance.gen('first_model', 'first_model', [], {})
+await paraforge_class_instance.python(`
   import time
   print('Sleeping...', end='')
   time.sleep(1)

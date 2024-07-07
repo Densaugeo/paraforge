@@ -46,8 +46,10 @@ const [
 ////////////////////////////////////
 
 export class Paraforge extends EventTarget {
-  constructor() {
+  constructor(verbosity) {
     super()
+    
+    this.verbosity = verbosity
     
     this._worker = new Worker(worker_file, { type: 'module' })
     
@@ -71,10 +73,21 @@ export class Paraforge extends EventTarget {
       if(message.data.event) {
         switch(message.data.event) {
           case 'stdout':
+            if(1 <= this.verbosity) {
+              console.log(`stdout: ${message.data.line}`)
+            }
             this.dispatchEvent(new StdoutEvent(message.data.line))
             break
           case 'stderr':
+            if(1 <= this.verbosity) {
+              console.log(`stderr: ${message.data.line}`)
+            }
             this.dispatchEvent(new StdoutEvent(message.data.line))
+            break
+          case 'log':
+            if(message.data.priority <= this.verbosity) {
+              console.log(message.data.line)
+            }
             break
           default: throw new Error('idk')
         }
@@ -85,17 +98,18 @@ export class Paraforge extends EventTarget {
     this._reject = null
   }
   
-  init(verbose, script_name, script_contents) {
+  init(script_name, script_contents) {
     if(this._resolve) throw new Error('Worker already running!')
     
     this._worker.postMessage({
       function: 'init',
-      verbose,
-      rust_module,
-      upython_module,
-      paraforge_init_py,
-      script_name,
-      script_contents,
+      args: {
+        rust_module,
+        upython_module,
+        paraforge_init_py,
+        script_name,
+        script_contents,
+      },
     })
     
     return new Promise((resolve, reject) => {
@@ -104,12 +118,14 @@ export class Paraforge extends EventTarget {
     })
   }
   
-  runPython(code) {
+  python(code) {
     if(this._resolve) throw new Error('Worker already running!')
     
     this._worker.postMessage({
-      function: 'runPython',
-      code,
+      function: 'python',
+      args: {
+        code,
+      },
     })
     
     return new Promise((resolve, reject) => {
@@ -118,14 +134,17 @@ export class Paraforge extends EventTarget {
     })
   }
   
-  gen(script_name, generator, args) {
+  gen(script_name, generator, python_args, python_kwargs) {
     if(this._resolve) throw new Error('Worker already running!')
     
     this._worker.postMessage({
       function: 'gen',
-      script_name,
-      generator,
-      args,
+      args: {
+        script_name,
+        generator,
+        python_args,
+        python_kwargs,
+      },
     })
     
     return new Promise((resolve, reject) => {
@@ -139,6 +158,7 @@ export class Paraforge extends EventTarget {
     
     this._worker.postMessage({
       function: 'serialize',
+      args: {},
     })
     
     return new Promise((resolve, reject) => {
