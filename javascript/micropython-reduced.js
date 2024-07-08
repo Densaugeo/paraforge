@@ -125,6 +125,8 @@ const string_transport = (handle, string) => {
 const py_rust_call = (name, ...args) => {
   log(2, `py_rust_call(name=${name}, args=${args})`)
   
+  // The Rust exports return i64, but only the lower 48 bits are used so they
+  // convert to JS numbers without loss
   return Number(rust_instance.exports[name](...args))
 }
 
@@ -153,7 +155,7 @@ const lookup_attr = (js_handle, name_pointer, result_pointer) => {
   // should always be zero
   if(js_handle !== 0) throw new TypeError('js_handle must be 0')
   
-  const name = UTF8ToString(name_pointer)
+  const name = mp_read_utf8(name_pointer)
   
   // The name not existing is very common: upython tries to look up all sorts of
   // pythonic properties that don't exist here. upython expects to get false
@@ -161,7 +163,7 @@ const lookup_attr = (js_handle, name_pointer, result_pointer) => {
   if(!(name in proxy_js_ref[0])) return false
   
   const result = proxy_js_ref[0][name]
-  proxy_convert_js_to_mp_obj_jsside(result, result_pointer);
+  proxy_convert_js_to_mp(result, result_pointer);
   return true
 }
 
@@ -170,7 +172,7 @@ const call = (function_handle, ...pointers) => {
   const result_pointer = pointers.pop()
   
   // All other pointers are for argument values
-  const translated_args = pointers.map(proxy_convert_mp_to_js_obj_jsside)
+  const translated_args = pointers.map(proxy_convert_mp_to_js)
   
   const ret = proxy_js_ref[function_handle](...translated_args)
   
@@ -183,7 +185,7 @@ const call = (function_handle, ...pointers) => {
   // part of a double are enough
   const force_float = proxy_js_ref[function_handle] === py_rust_call
   
-  proxy_convert_js_to_mp_obj_jsside(ret, result_pointer, force_float);
+  proxy_convert_js_to_mp(ret, result_pointer, force_float);
 }
 
 const calln = (function_handle, argument_count, arguments_pointer,
@@ -205,17 +207,17 @@ result_pointer) => {
 // the dynCall_* exports disappeared, and are replaced by functions accessed
 // through __indirect_function_table
 const invoke = (index, ...args) => {
-  var sp = upython_instance.exports.stackSave()
+  var sp = mp_instance.exports.stackSave()
   try {
-    return upython_instance.exports.__indirect_function_table.get(index)(...args)
+    return mp_instance.exports.__indirect_function_table.get(index)(...args)
   } catch(e) {
-    upython_instance.exports.stackRestore(sp)
+    mp_instance.exports.stackRestore(sp)
     if (e !== e+0) throw e
-      upython_instance.exports.setThrew(1, 0)
+      mp_instance.exports.setThrew(1, 0)
   }
 }
 
-const getValue = (ptr, type) => {
+const get_value = (ptr, type) => {
   switch (type) {
     // 64-bit ints not supported, because upython was compiled with
     // emscripten's WASM_BIGINT flag not set. Additionally, upython offers no
@@ -224,20 +226,20 @@ const getValue = (ptr, type) => {
     case 'i32'   : return PYMEM_I32[ptr >> 2]
     case 'float' : return PYMEM_F32[ptr >> 2]
     case 'double': return PYMEM_F64[ptr >> 3]
-    default: throw new TypeError(`invalid type for getValue: ${type}`)
+    default: throw new TypeError(`invalid type for get_value: ${type}`)
   }
 }
 
-const setValue = (ptr, value, type) => {
+const set_value = (ptr, value, type) => {
   switch (type) {
     case 'i32'   : PYMEM_I32[ptr >> 2] = value; break
     case 'float' : PYMEM_F32[ptr >> 2] = value; break
     case 'double': PYMEM_F64[ptr >> 3] = value; break
-    default: throw new TypeError(`invalid type for getValue: ${type}`)
+    default: throw new TypeError(`invalid type for get_value: ${type}`)
   }
 }
 
-const UTF8ToString = (pointer, max_length) => {
+const mp_read_utf8 = (pointer, max_length) => {
   if(pointer === 0) return ''
   
   // Must use var and not let, due to javascript's bizarre scoping rules
@@ -250,7 +252,7 @@ const UTF8ToString = (pointer, max_length) => {
   return UTF8Decoder.decode(PYMEM_U8.subarray(pointer, pointer + length))
 }
 
-const stringToUTF8 = (string, pointer, max_length) => {
+const mp_write_utf8 = (string, pointer, max_length) => {
   if(typeof max_length !== 'number' || max_length <= 0) return 0
   
   // -1 for string null terminator
@@ -266,7 +268,7 @@ const ___syscall_openat = (dirfd, path, flags, varargs) => {
     `varargs=${varargs})`)
   
   try {
-    path = UTF8ToString(path);
+    path = mp_read_utf8(path);
     if(path[0] !== '/') path = '/' + path
     log(3, `___syscall_openat path converted to "${path}"`)
     if(!(path in VFS)) return -1
@@ -278,7 +280,7 @@ const ___syscall_stat64 = (path, buf) => {
   log(2, `___syscall_stat64(path=${path}, buf=${buf})`)
   
   try {
-    path = UTF8ToString(path)
+    path = mp_read_utf8(path)
     if(path[0] !== '/') path = '/' + path
     log(3, `___syscall_stat64 path converted to "${path}"`)
 
@@ -459,45 +461,45 @@ const wasmImports = {
 const UTF8Encoder = new TextEncoder('utf8')
 const UTF8Decoder = new TextDecoder('utf8')
 
-const upython_instance = await WebAssembly.instantiate(init_args.upython_module, {
+const mp_instance = await WebAssembly.instantiate(init_args.mp_module, {
   'env': wasmImports,
   'wasi_snapshot_preview1': wasmImports,
 })
 
-const upython_buffer = upython_instance.exports.memory.buffer
-const PYMEM_U8  = new Uint8Array  (upython_buffer)
-const PYMEM_I32 = new Int32Array  (upython_buffer)
-const PYMEM_U32 = new Uint32Array (upython_buffer)
-const PYMEM_F32 = new Float32Array(upython_buffer)
-const PYMEM_F64 = new Float64Array(upython_buffer)
+const mp_buffer = mp_instance.exports.memory.buffer
+const PYMEM_U8  = new Uint8Array  (mp_buffer)
+const PYMEM_I32 = new Int32Array  (mp_buffer)
+const PYMEM_U32 = new Uint32Array (mp_buffer)
+const PYMEM_F32 = new Float32Array(mp_buffer)
+const PYMEM_F64 = new Float64Array(mp_buffer)
 
 // 1 MB heap size used by upython's default build, seems good enough
-const upython_heap_size = 1024*1024
+const mp_heap_size = 1024*1024
 
-upython_instance.exports.__wasm_call_ctors()
-upython_instance.exports.mp_js_init(upython_heap_size)
-upython_instance.exports.proxy_c_init()
+mp_instance.exports.__wasm_call_ctors()
+mp_instance.exports.mp_js_init(mp_heap_size)
+mp_instance.exports.proxy_c_init()
 
 self.python = async args => {
   const { code } = args
   
-  const mystery_pointer = upython_instance.exports.malloc(3 * 4)
-  const stack = upython_instance.exports.stackSave()
+  const mystery_pointer = mp_instance.exports.malloc(3 * 4)
+  const stack = mp_instance.exports.stackSave()
   
   try {
     const utf8 = UTF8Encoder.encode(code + '\0')
-    const string_pointer = upython_instance.exports.stackAlloc(utf8.length)
+    const string_pointer = mp_instance.exports.stackAlloc(utf8.length)
     PYMEM_U8.set(utf8, string_pointer)
     
-    upython_instance.exports.mp_js_do_exec(string_pointer, mystery_pointer)
+    mp_instance.exports.mp_js_do_exec(string_pointer, mystery_pointer)
   } finally {
-    upython_instance.exports.stackRestore(stack)
+    mp_instance.exports.stackRestore(stack)
   }
   
   try {
-    return proxy_convert_mp_to_js_obj_jsside(mystery_pointer)
+    return proxy_convert_mp_to_js(mystery_pointer)
   } finally {
-    upython_instance.exports.free(mystery_pointer)
+    mp_instance.exports.free(mystery_pointer)
   }
 }
 
@@ -545,85 +547,103 @@ class PythonError extends Error {
     }
 }
 
-function proxy_convert_js_to_mp_obj_jsside(js_obj, out, force_float=false) {
-  //console.log(`proxy_convert_js_to_mp_obj_jsside(js_obj=${js_obj}, out=${out})`)
-    let kind;
-    if (js_obj === undefined) {
+function proxy_convert_js_to_mp(js, pointer, force_float=false) {
+  let proxy_kind
+  
+  switch(typeof js) {
+    case 'undefined':
       // upython interprets PROXY_KIND_JS_UNDEFINED as being the root JS object.
       // I have no idea why. PROXY_KIND_JS_NULL is interpreted as None, so use
       // that instead
-      kind = PROXY_KIND_JS_NULL;
-    } else if (js_obj === null) {
-        kind = PROXY_KIND_JS_NULL;
-    } else if (typeof js_obj === "number") {
-        if (Number.isInteger(js_obj) && force_float == false) {
-            kind = PROXY_KIND_JS_INTEGER;
-            setValue(out + 4, js_obj, "i32");
-        } else {
-            kind = PROXY_KIND_JS_DOUBLE;
-            // double must be stored to an address that's a multiple of 8
-            const temp = (out + 4) & ~7;
-            setValue(temp, js_obj, "double");
-            const double_lo = getValue(temp, "i32");
-            const double_hi = getValue(temp + 4, "i32");
-            setValue(out + 4, double_lo, "i32");
-            setValue(out + 8, double_hi, "i32");
-        }
-    } else if (typeof js_obj === "string") {
-        kind = PROXY_KIND_JS_STRING;
-        const len = new TextEncoder().encode(js_obj).length
-        const buf = upython_instance.exports.malloc(len + 1);
-        stringToUTF8(js_obj, buf, len + 1);
-        setValue(out + 4, len, "i32");
-        setValue(out + 8, buf, "i32");
-    } else {
-        kind = PROXY_KIND_JS_OBJECT;
-        const id = proxy_js_ref.length;
-        proxy_js_ref[id] = js_obj;
-        setValue(out + 4, id, "i32");
-    }
-    setValue(out + 0, kind, "i32");
+      proxy_kind = PROXY_KIND_JS_NULL
+      break
+    
+    case 'null':
+      proxy_kind = PROXY_KIND_JS_NULL
+      break
+    
+    case 'number':
+      if (Number.isInteger(js) && force_float == false) {
+        set_value(pointer + 4, js, 'i32')
+        proxy_kind = PROXY_KIND_JS_INTEGER
+      } else {
+        // f64 must be stored to an address that's a multiple of 8
+        const temp = (pointer + 4) & ~7
+        set_value(temp, js, 'double')
+        const double_lo = get_value(temp, 'i32')
+        const double_hi = get_value(temp + 4, 'i32')
+        set_value(pointer + 4, double_lo, 'i32')
+        set_value(pointer + 8, double_hi, 'i32')
+        proxy_kind = PROXY_KIND_JS_DOUBLE
+      }
+      break
+    
+    case 'string':
+      const length = UTF8Encoder.encode(js).length
+      const buffer = mp_instance.exports.malloc(length + 1)
+      mp_write_utf8(js, buffer, length + 1)
+      set_value(pointer + 4, length, 'i32')
+      set_value(pointer + 8, buffer, 'i32')
+      proxy_kind = PROXY_KIND_JS_STRING
+      break
+    
+    case 'function':
+      const id = proxy_js_ref.length;
+      proxy_js_ref[id] = js;
+      set_value(pointer + 4, id, "i32");
+      proxy_kind = PROXY_KIND_JS_OBJECT
+      break
+    
+    default:
+      throw new Error('Unsupported type cannot be sent to MicroPython ' +
+        `(${js} of type "${typeof js}")`)
+  }
+  
+  set_value(pointer, proxy_kind, 'i32')
 }
 
-function proxy_convert_mp_to_js_obj_jsside(value) {
-    const kind = getValue(value, "i32");
-    let obj;
-    if (kind === PROXY_KIND_MP_EXCEPTION) {
-        // Exception
-        const str_len = getValue(value + 4, "i32");
-        const str_ptr = getValue(value + 8, "i32");
-        const str = UTF8ToString(str_ptr, str_len);
-        upython_instance.exports.free(str_ptr);
-        const str_split = str.split("\x04");
-        throw new PythonError(str_split[0], str_split[1]);
-    }
-    if (kind === PROXY_KIND_MP_NULL) {
-        // MP_OBJ_NULL
-        throw new Error("NULL object");
-    }
-    if (kind === PROXY_KIND_MP_NONE) {
-        // None
-        obj = null;
-    } else if (kind === PROXY_KIND_MP_INT) {
-        // int
-        obj = getValue(value + 4, "i32");
-    } else if (kind === PROXY_KIND_MP_FLOAT) {
-        // float
-        // double must be loaded from an address that's a multiple of 8
-        const temp = (value + 4) & ~7;
-        const double_lo = getValue(value + 4, "i32");
-        const double_hi = getValue(value + 8, "i32");
-        setValue(temp, double_lo, "i32");
-        setValue(temp + 4, double_hi, "i32");
-        obj = getValue(temp, "double");
-    } else if (kind === PROXY_KIND_MP_STR) {
-        // str
-        const str_len = getValue(value + 4, "i32");
-        const str_ptr = getValue(value + 8, "i32");
-        obj = UTF8ToString(str_ptr, str_len);
-    }
-    //alert(`proxy_convert_mp_to_js_obj_jsside(value=${value}) -> ${obj}`)
-    return obj;
+function proxy_convert_mp_to_js(pointer) {
+  const proxy_kind = get_value(pointer, 'i32')
+  
+  switch(proxy_kind) {
+    case PROXY_KIND_MP_NONE:
+      return null
+    
+    case PROXY_KIND_MP_INT:
+      return get_value(pointer + 4, 'i32')
+    
+    case PROXY_KIND_MP_FLOAT:
+      // f64 must be loaded from an address that's a multiple of 8. This is
+      // straight from emscripten's wrappers, so I assume the occasional
+      // overwrite of the PROXY_KIND value is okay
+      const temp = (pointer + 4) & ~7
+      const double_lo = get_value(pointer + 4, 'i32')
+      const double_hi = get_value(pointer + 8, 'i32')
+      set_value(temp, double_lo, 'i32')
+      set_value(temp + 4, double_hi, 'i32')
+      return get_value(temp, 'double')
+    
+    case PROXY_KIND_MP_STR:
+      var length  = get_value(pointer + 4, 'i32')
+      var pointer = get_value(pointer + 8, 'i32')
+      return mp_read_utf8(pointer, length)
+    
+    case PROXY_KIND_MP_EXCEPTION:
+      var length  = get_value(pointer + 4, 'i32')
+      var pointer = get_value(pointer + 8, 'i32')
+      const string = mp_read_utf8(pointer, length)
+      
+      // Not sure why this one is freed when the others aren't, but it's in the
+      // original emscaripten wrappers. Maybe the exception is assumed to be
+      // consumed by the host, so upython doesn't grabage collect it?
+      mp_instance.exports.free(pointer)
+      
+      throw new PythonError(...string.split('\x04'))
+    
+    default:
+      throw new Error('Unsupported type returned from MicroPython ' +
+        `(PROXY_KIND value = ${proxy_kind})`)
+  }
 }
 
 init_return_resolve(null)

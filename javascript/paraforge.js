@@ -8,7 +8,7 @@ const rust_module_promise = (async () => {
   return await WebAssembly.compileStreaming(response)
 })()
 
-const upython_module_promise = (async () => {
+const mp_module_promise = (async () => {
   const response = await fetch('micropython.wasm',
     { cache: 'no-store' })
   return await WebAssembly.compileStreaming(response)
@@ -31,12 +31,12 @@ const paraforge_init_py_promise = (async () => {
 
 const [
   rust_module,
-  upython_module,
+  mp_module,
   worker_file,
   paraforge_init_py,
 ] = await Promise.all([
   rust_module_promise,
-  upython_module_promise,
+  mp_module_promise,
   worker_file_promise,
   paraforge_init_py_promise,
 ])
@@ -105,7 +105,7 @@ export class Paraforge extends EventTarget {
       function: 'init',
       args: {
         rust_module,
-        upython_module,
+        mp_module,
         paraforge_init_py,
         script_name,
         script_contents,
