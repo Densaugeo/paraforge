@@ -63,8 +63,8 @@ export class Paraforge extends EventTarget {
       //console.log(message.data)
       
       if(message.data.function) {
-        if(message.data.error_code === 0) this._resolve(message.data.result)
-        else this._reject(message.data.error_code)
+        if(message.data.error === null) this._resolve(message.data.result)
+        else this._reject(message.data.error)
         
         this._resolve = null
         this._reject = null

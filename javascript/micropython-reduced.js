@@ -23,19 +23,31 @@ const log = (priority, line) => {
 // This section sets up messaging to the main thread and retrieves the init
 // arguments supplied from the main thread
 
-self.addEventListener('message', async e => {
-  const args_string = Object.keys(e.data.args).map(
-    key => `${key}=${e.data.args[key]}`
+self.addEventListener('message', async message => {
+  const data = message.data
+  const args_string = Object.keys(data.args).map(
+    key => `${key}=${data.args[key]}`
   ).join(', ')
-  log(1, `Executing call from main thread: ${e.data.function}(${args_string})`)
+  log(1, `Executing call from main thread: ${data.function}(${args_string})`)
   
-  const result = await self[e.data.function](e.data.args)
+  let result = null, error = null
   
-  self.postMessage({
-    function: e.data.function,
-    result,
-    error_code: 0,
-  })
+  try {
+    result = await self[data.function](data.args)
+  } catch(e) {
+    // Send an error back to the main thread for eorr handling by the caller...
+    // but the error object itself can't be sent across threads, so info like
+    // line # is lost when sending back. So throw the error in this thread as
+    // well, which has a better chance of showing debug info
+    error = `${e.name}: ${e.message}`
+    throw e
+  } finally {
+    self.postMessage({
+      function: data.function,
+      result,
+      error,
+    })
+  }
 })
 
 let init_args_resolve
@@ -145,9 +157,12 @@ self.serialize = async () => {
 ////////////////////////////////////
 
 const proxy_js_ref = [{
+    string_transport,
+    py_rust_call,
+  },
   string_transport,
   py_rust_call,
-}]
+]
 
 const lookup_attr = (js_handle, name_pointer, result_pointer) => {
   // js_handle is used by emscripten to designate which JS object to look up
@@ -176,16 +191,18 @@ const call = (function_handle, ...pointers) => {
   
   const ret = proxy_js_ref[function_handle](...translated_args)
   
-  // Use force_float option because paraforge.wasm's return types are all
-  // i64...but micropython.wasm only recognizes i32 at FFI boundary. Luckily,
-  // micropython.wasm never needs to call .serialize() or .string_transport()
-  // directly, which are the only functions that need the full 64 bits. Most
-  // only use the upper 32 bit as a union tag to distinguish between an error
-  // and whatever the function returns, so the 53 bits available in the integer
-  // part of a double are enough
-  const force_float = proxy_js_ref[function_handle] === py_rust_call
-  
-  proxy_convert_js_to_mp(ret, result_pointer, force_float);
+  // Force handling py_rust_call() results as f64 because paraforge.wasm's
+  // return types are all i64...but micropython.wasm only recognizes i32 at FFI
+  // boundary. Luckily, micropython.wasm never needs to call .serialize() or
+  // .string_transport() directly, which are the only functions that need the
+  // full 64 bits. Most only use the upper 32 bit as a union tag to distinguish
+  // between an error and whatever the function returns, so the 53 bits
+  // available in the integer part of a double are enough
+  if(proxy_js_ref[function_handle] === py_rust_call) {
+    proxy_convert_js_to_mp(ret, result_pointer, PROXY_KIND_JS_DOUBLE)
+  } else {
+    proxy_convert_js_to_mp(ret, result_pointer)
+  }
 }
 
 const calln = (function_handle, argument_count, arguments_pointer,
@@ -511,33 +528,33 @@ self.gen = args => {
     passthrough.push(`${key}=${python_kwargs[key]}`)
   })
   
-  python({ code: `
+  return python({ code: `
     import ${script_name}
     ${script_name}.gen_${generator}(${passthrough.join(', ')})
   ` })
 }
 
-// These constants should match the constants in proxy_c.c.
+// These constants should match the constants in upython's proxy_c.c.
 
-const PROXY_KIND_MP_EXCEPTION = -1;
-const PROXY_KIND_MP_NULL = 0;
-const PROXY_KIND_MP_NONE = 1;
-const PROXY_KIND_MP_BOOL = 2;
-const PROXY_KIND_MP_INT = 3;
-const PROXY_KIND_MP_FLOAT = 4;
-const PROXY_KIND_MP_STR = 5;
-const PROXY_KIND_MP_CALLABLE = 6;
-const PROXY_KIND_MP_GENERATOR = 7;
-const PROXY_KIND_MP_OBJECT = 8;
-const PROXY_KIND_MP_JSPROXY = 9;
+const PROXY_KIND_MP_EXCEPTION = -1
+const PROXY_KIND_MP_NULL      = 0
+const PROXY_KIND_MP_NONE      = 1
+const PROXY_KIND_MP_BOOL      = 2
+const PROXY_KIND_MP_INT       = 3
+const PROXY_KIND_MP_FLOAT     = 4
+const PROXY_KIND_MP_STR       = 5
+const PROXY_KIND_MP_CALLABLE  = 6
+const PROXY_KIND_MP_GENERATOR = 7
+const PROXY_KIND_MP_OBJECT    = 8
+const PROXY_KIND_MP_JSPROXY   = 9
 
-const PROXY_KIND_JS_UNDEFINED = 0;
-const PROXY_KIND_JS_NULL = 1;
-const PROXY_KIND_JS_BOOLEAN = 2;
-const PROXY_KIND_JS_INTEGER = 3;
-const PROXY_KIND_JS_DOUBLE = 4;
-const PROXY_KIND_JS_STRING = 5;
-const PROXY_KIND_JS_OBJECT = 6;
+const PROXY_KIND_JS_UNDEFINED = 0
+const PROXY_KIND_JS_NULL      = 1
+const PROXY_KIND_JS_BOOLEAN   = 2
+const PROXY_KIND_JS_INTEGER   = 3
+const PROXY_KIND_JS_DOUBLE    = 4
+const PROXY_KIND_JS_STRING    = 5
+const PROXY_KIND_JS_OBJECT    = 6
 
 class PythonError extends Error {
     constructor(exc_type, exc_details) {
@@ -547,62 +564,65 @@ class PythonError extends Error {
     }
 }
 
-function proxy_convert_js_to_mp(js, pointer, force_float=false) {
-  let proxy_kind
-  
+const proxy_detect_kind = js => {
+  // upython interprets PROXY_KIND_JS_UNDEFINED as being the root JS object. I
+  // have no idea why. PROXY_KIND_JS_NULL is interpreted as None, so use that
+  // instead
   switch(typeof js) {
-    case 'undefined':
-      // upython interprets PROXY_KIND_JS_UNDEFINED as being the root JS object.
-      // I have no idea why. PROXY_KIND_JS_NULL is interpreted as None, so use
-      // that instead
-      proxy_kind = PROXY_KIND_JS_NULL
+    case 'undefined': return PROXY_KIND_JS_NULL
+    case 'null'     : return PROXY_KIND_JS_NULL
+    case 'boolean'  : return PROXY_KIND_JS_BOOLEAN
+    case 'number'   : return Number.isInteger(js)
+                           ? PROXY_KIND_JS_INTEGER
+                           : PROXY_KIND_JS_DOUBLE
+    case 'string'   : return PROXY_KIND_JS_STRING
+    default         : return PROXY_KIND_JS_OBJECT
+  }
+}
+
+const proxy_convert_js_to_mp = (js, pointer, proxy_kind) => {
+  proxy_kind = proxy_kind ?? proxy_detect_kind(js)
+  
+  switch(proxy_kind) {
+    case PROXY_KIND_JS_BOOLEAN:
+      set_value(pointer + 4, js, 'i32')
       break
     
-    case 'null':
-      proxy_kind = PROXY_KIND_JS_NULL
+    case PROXY_KIND_JS_INTEGER:
+      set_value(pointer + 4, js, 'i32')
       break
     
-    case 'number':
-      if (Number.isInteger(js) && force_float == false) {
-        set_value(pointer + 4, js, 'i32')
-        proxy_kind = PROXY_KIND_JS_INTEGER
-      } else {
-        // f64 must be stored to an address that's a multiple of 8
-        const temp = (pointer + 4) & ~7
-        set_value(temp, js, 'double')
-        const double_lo = get_value(temp, 'i32')
-        const double_hi = get_value(temp + 4, 'i32')
-        set_value(pointer + 4, double_lo, 'i32')
-        set_value(pointer + 8, double_hi, 'i32')
-        proxy_kind = PROXY_KIND_JS_DOUBLE
-      }
+    case PROXY_KIND_JS_DOUBLE:
+      // f64 must be stored to an address that's a multiple of 8
+      const temp = (pointer + 4) & ~7
+      set_value(temp, js, 'double')
+      const double_lo = get_value(temp, 'i32')
+      const double_hi = get_value(temp + 4, 'i32')
+      set_value(pointer + 4, double_lo, 'i32')
+      set_value(pointer + 8, double_hi, 'i32')
       break
     
-    case 'string':
+    case PROXY_KIND_JS_STRING:
       const length = UTF8Encoder.encode(js).length
       const buffer = mp_instance.exports.malloc(length + 1)
       mp_write_utf8(js, buffer, length + 1)
       set_value(pointer + 4, length, 'i32')
       set_value(pointer + 8, buffer, 'i32')
-      proxy_kind = PROXY_KIND_JS_STRING
       break
     
-    case 'function':
-      const id = proxy_js_ref.length;
-      proxy_js_ref[id] = js;
-      set_value(pointer + 4, id, "i32");
-      proxy_kind = PROXY_KIND_JS_OBJECT
+    case PROXY_KIND_JS_OBJECT:
+      const handle = proxy_js_ref.indexOf(js)
+      if(handle === -1) throw new Error('Only objects in proxy_js_ref may be passed to MicroPython')
+      set_value(pointer + 4, handle, 'i32')
       break
-    
-    default:
-      throw new Error('Unsupported type cannot be sent to MicroPython ' +
-        `(${js} of type "${typeof js}")`)
   }
   
+  // proxy_kind is written last, because if it written earlier it can be
+  // overwritten by the byte shuffling for writing f64s
   set_value(pointer, proxy_kind, 'i32')
 }
 
-function proxy_convert_mp_to_js(pointer) {
+const proxy_convert_mp_to_js = pointer => {
   const proxy_kind = get_value(pointer, 'i32')
   
   switch(proxy_kind) {
