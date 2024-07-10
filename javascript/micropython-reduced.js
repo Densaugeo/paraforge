@@ -35,12 +35,19 @@ self.addEventListener('message', async message => {
   try {
     result = await self[data.function](data.args)
   } catch(e) {
-    // Send an error back to the main thread for eorr handling by the caller...
-    // but the error object itself can't be sent across threads, so info like
-    // line # is lost when sending back. So throw the error in this thread as
-    // well, which has a better chance of showing debug info
-    error = `${e.name}: ${e.message}`
-    throw e
+    // Send an error back to the main thread for error handling by the caller...
+    // but the error object itself can't be sent across threads, so send a
+    // new object (but PythonErrors, unlike regular Errors CAN be sent to the
+    // main thread...at the cost of their type and constructor changing)
+    error = {
+      name: e.name,
+      message: e.message,
+    }
+    // Info like line # is lost when sending back. So throw the error in this
+    // thread as well, which has a better chance of showing debug info. Errors
+    // reported from upython do not need to be thrown here because the host
+    // environment doesn't have any extra information to report
+    if(!(e instanceof PythonError)) throw e
   } finally {
     self.postMessage({
       function: data.function,
@@ -557,11 +564,14 @@ const PROXY_KIND_JS_STRING    = 5
 const PROXY_KIND_JS_OBJECT    = 6
 
 class PythonError extends Error {
-    constructor(exc_type, exc_details) {
-        super(exc_details);
-        this.name = "PythonError";
-        this.type = exc_type;
-    }
+  constructor(type, message) {
+    super(message)
+    this.name = 'PythonError'
+    
+    // I don't currently use the type, but upython sends it, and I might use it
+    // later
+    this.type = type
+  }
 }
 
 const proxy_detect_kind = js => {

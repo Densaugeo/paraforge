@@ -9,30 +9,37 @@ if micropython:
 else:
     import os, ctypes
 
-class ErrorCode:
-    None_ = 0
-    Mutex = 1
-    Generation = 2
-    NotImplemented = 3
-    WebAssemblyCompile = 4
-    WebAssemblyInstance = 5
-    WebAssemblyExecution = 6
-    ModuleNotParaforge = 7
-    ModelGeneratorNotFound = 8
-    ParameterCount = 9
-    ParameterType = 10
-    ParameterOutOfRange = 11
-    OutputNotGLB = 12
-    PointerTooLow = 13
-    UnrecognizedErrorCode = 14
-    HandleOutOfBounds = 15
-    NotInitialized = 16
-    SizeOutOfBounds = 17
-    UnicodeError = 18
-
 class ParaforgeError(Exception):
-    def __init__(self, code: ErrorCode):
-        super().__init__(f'Code {code.value}: {code.name}')
+    def __init__(self):
+        super().__init__(f'Paraforge error code {self.code}')
+    
+    def from_code(code: int) -> 'ParaforgeError':
+        return paraforge_errors[code]()
+
+paraforge_errors = []
+for code, name in [
+    ( 0, 'None_'),
+    ( 1, 'Mutex'),
+    ( 2, 'Generation'),
+    ( 3, 'NotImplemented'),
+    ( 4, 'WebAssemblyCompile'),
+    ( 5, 'WebAssemblyInstance'),
+    ( 6, 'WebAssemblyExecution'),
+    ( 7, 'ModuleNotParaforge'),
+    ( 8, 'ModelGeneratorNotFound'),
+    ( 9, 'ParameterCount'),
+    (10, 'ParameterType'),
+    (11, 'ParameterOutOfRange'),
+    (12, 'OutputNotGLB'),
+    (13, 'PointerTooLow'),
+    (14, 'UnrecognizedErrorCode'),
+    (15, 'HandleOutOfBounds'),
+    (16, 'NotInitialized'),
+    (17, 'SizeOutOfBounds'),
+    (18, 'UnicodeError'),
+]:
+    paraforge_errors.append(type(name, (ParaforgeError, ), { 'code': code }))
+
 
 if not micropython:
     store = wasmtime.Store()
@@ -223,7 +230,8 @@ def wasm_call(function: str, *args):
     elif tag < 2**16:
         # Oh noes! A tag in this range must be an error code
         try:
-            raise ParaforgeError(ErrorCode(value))
+            #raise ParaforgeError(ErrorCode(value))
+            raise ParaforgeError.from_code(value)
         except ValueError as e:
             raise ParaforgeError(ErrorCode.UnrecognizedErrorCode) from e
     else:

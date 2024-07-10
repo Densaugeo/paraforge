@@ -53,6 +53,8 @@ export class Paraforge extends EventTarget {
     
     this._worker = new Worker(worker_file, { type: 'module' })
     
+    // Note: errors in the worker thread do not consistently trigger this
+    // function
     this._worker.onerror = e => {
       console.log('An error happened in a worker. Good luck getting any ' +
         'debugging info.')
@@ -63,8 +65,13 @@ export class Paraforge extends EventTarget {
       //console.log(message.data)
       
       if(message.data.function) {
-        if(message.data.error === null) this._resolve(message.data.result)
-        else this._reject(message.data.error)
+        const e = message.data.error
+        
+        if(e === null) this._resolve(message.data.result)
+        else {
+          const error_type = e.name === 'PythonError' ? PythonError : Error
+          this._reject(new error_type(e.message))
+        }
         
         this._resolve = null
         this._reject = null
@@ -89,7 +96,9 @@ export class Paraforge extends EventTarget {
               console.log(message.data.line)
             }
             break
-          default: throw new Error('idk')
+          default:
+            throw new Error('Unrecognized event received from worker thread: ' +
+              message.data.event)
         }
       }
     }
@@ -188,40 +197,9 @@ export class StderrEvent extends ParaforgeEvent {
   }
 }
 
-export class ParaforgeError extends Error {}
-export class NotImplementedError extends ParaforgeError {
+class PythonError extends Error {
   constructor(message) {
     super(message)
-    this.name = 'NotImplementedError'
+    this.name = 'PythonError'
   }
-}
-
-// These constants should match the constants in proxy_c.c.
-
-const PROXY_KIND_MP_EXCEPTION = -1;
-const PROXY_KIND_MP_NULL = 0;
-const PROXY_KIND_MP_NONE = 1;
-const PROXY_KIND_MP_BOOL = 2;
-const PROXY_KIND_MP_INT = 3;
-const PROXY_KIND_MP_FLOAT = 4;
-const PROXY_KIND_MP_STR = 5;
-const PROXY_KIND_MP_CALLABLE = 6;
-const PROXY_KIND_MP_GENERATOR = 7;
-const PROXY_KIND_MP_OBJECT = 8;
-const PROXY_KIND_MP_JSPROXY = 9;
-
-const PROXY_KIND_JS_UNDEFINED = 0;
-const PROXY_KIND_JS_NULL = 1;
-const PROXY_KIND_JS_BOOLEAN = 2;
-const PROXY_KIND_JS_INTEGER = 3;
-const PROXY_KIND_JS_DOUBLE = 4;
-const PROXY_KIND_JS_STRING = 5;
-const PROXY_KIND_JS_OBJECT = 6;
-
-class PythonError extends Error {
-    constructor(exc_type, exc_details) {
-        super(exc_details);
-        this.name = "PythonError";
-        this.type = exc_type;
-    }
 }
