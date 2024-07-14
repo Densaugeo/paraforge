@@ -99,8 +99,7 @@ const VFS = {
     }
   },
   '/paraforge': null,
-  '/paraforge/__init__.py': init_args.paraforge_init_py,
-  [`/${init_args.script_name}.py`]: new Uint8Array(init_args.script_contents),
+  '/paraforge/__init__.py': new Uint8Array(init_args.paraforge_init_py),
 }
 
 class VirtualFD {
@@ -121,6 +120,11 @@ class VirtualFD {
 // functions, and edge cases with creating or deleting a file of the same name
 // aren't a concern because the VFS is read-only (for the wasm VM)
 VirtualFD.instances = ['STDIN', 'STDOUT', 'STDERR']
+
+self.add_file = args => {
+  const { path, contents } = args
+  VFS[path] = new Uint8Array(contents)
+}
 
 /////////////////////////////
 // Rust WebAssembly Module //

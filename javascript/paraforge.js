@@ -24,9 +24,8 @@ const worker_file_promise = (async () => {
 })()
 
 const paraforge_init_py_promise = (async () => {
-  const response = await fetch('../paraforge/__init__.py', { cache: 'reload' })
-  const array_buffer = await response.arrayBuffer()
-  return new Uint8Array(array_buffer)
+  const response = await fetch('../paraforge/__init__.py', { cache: 'no-store' })
+  return await response.arrayBuffer()
 })()
 
 const [
@@ -41,12 +40,16 @@ const [
   paraforge_init_py_promise,
 ])
 
-////////////////////////////////////
-// Paraforge Class (Experimental) //
-////////////////////////////////////
+/////////////////////
+// Paraforge Class //
+/////////////////////
 
 export class Paraforge extends EventTarget {
-  constructor(verbosity) {
+  /**
+   * @param verbosity {number} Defaults to 0 (no logging). Higher value = more
+   *   logging
+   */
+  constructor(verbosity=0) {
     super()
     
     this.verbosity = verbosity
@@ -62,8 +65,6 @@ export class Paraforge extends EventTarget {
     }
     
     this._worker.onmessage = message => {
-      //console.log(message.data)
-      
       if(message.data.function) {
         const e = message.data.error
         
@@ -89,7 +90,7 @@ export class Paraforge extends EventTarget {
             if(1 <= this.verbosity) {
               console.log(`stderr: ${message.data.line}`)
             }
-            this.dispatchEvent(new StdoutEvent(message.data.line))
+            this.dispatchEvent(new StderrEvent(message.data.line))
             break
           case 'log':
             if(message.data.priority <= this.verbosity) {
@@ -107,18 +108,12 @@ export class Paraforge extends EventTarget {
     this._reject = null
   }
   
-  init(script_name, script_contents) {
+  _thread_call(name, args) {
     if(this._resolve) throw new Error('Worker already running!')
     
     this._worker.postMessage({
-      function: 'init',
-      args: {
-        rust_module,
-        mp_module,
-        paraforge_init_py,
-        script_name,
-        script_contents,
-      },
+      function: name,
+      args,
     })
     
     return new Promise((resolve, reject) => {
@@ -127,59 +122,81 @@ export class Paraforge extends EventTarget {
     })
   }
   
-  python(code) {
-    if(this._resolve) throw new Error('Worker already running!')
-    
-    this._worker.postMessage({
-      function: 'python',
-      args: {
-        code,
-      },
-    })
-    
-    return new Promise((resolve, reject) => {
-      this._resolve = resolve
-      this._reject = reject
+  /**
+   * Must be called exactly once after construction. Performs longer-running
+   * initialization that is not suitable for the constructor
+   */
+  async init() {
+    return await this._thread_call('init', {
+      rust_module,
+      mp_module,
+      paraforge_init_py,
     })
   }
   
-  gen(script_name, generator, python_args, python_kwargs) {
-    if(this._resolve) throw new Error('Worker already running!')
+  /**
+   * Add a file into the virtual file system used by the MicroPython VM
+   * 
+   * @param path {string} Where to place the file in the virtual file system
+   * @param contents {string | ArrayBuffer} Contents of the file. May be either
+   *   a string containing a URL to download, or the actual contents in a buffer
+   */
+  async add_file(path, contents) {
+    let contents_
+    if(contents instanceof ArrayBuffer) contents_ = contents
+    if(typeof contents === 'string') {
+      const res = await fetch(contents, { cache: 'no-cache' })
+      contents_ = await res.arrayBuffer()
+    }
     
-    this._worker.postMessage({
-      function: 'gen',
-      args: {
-        script_name,
-        generator,
-        python_args,
-        python_kwargs,
-      },
-    })
-    
-    return new Promise((resolve, reject) => {
-      this._resolve = resolve
-      this._reject = reject
+    return await this._thread_call('add_file', {
+      path,
+      contents: contents_,
     })
   }
   
-  serialize() {
-    if(this._resolve) throw new Error('Worker already running!')
-    
-    this._worker.postMessage({
-      function: 'serialize',
-      args: {},
+  /**
+   * Evaluate arbitrary Python inside the MicroPython VM. Intended for
+   * debugging. VM does not have access to any outside resources except the Rust
+   * WebAssembly module
+   * 
+   * @param code {string}
+   */
+  async python(code) {
+    return await this._thread_call('python', { code })
+  }
+  
+  /**
+   * Generate a model
+   * 
+   * @param script_name {string} Name of Python module to import
+   * @param generator {string} Name of generator function to call. Do not
+   *   include gen_ prefix
+   * @param python_args {Array<any>} Arguments to pass to generator
+   * @param python_kwargs {Object} Keyword arguments to pass to generator
+   */
+  async gen(script_name, generator, python_args, python_kwargs) {
+    return await this._thread_call('gen', {
+      script_name,
+      generator,
+      python_args,
+      python_kwargs,
     })
-    
-    return new Promise((resolve, reject) => {
-      this._resolve = resolve
-      this._reject = reject
-    })
+  }
+  
+  /**
+   * Retrieve a completed model in .glb format
+   * 
+   * @returns {Promise<Uint8Array>}
+   */
+  async serialize() {
+    return await this._thread_call('serialize', {})
   }
 }
 
-/////////////////////////
-// Virtual File System //
-/////////////////////////
+///////////////////
+// Miscellaneous //
+///////////////////
 
 export class ParaforgeEvent extends Event {}
 
