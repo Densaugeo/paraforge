@@ -15,12 +15,12 @@ const mp_module_promise = (async () => {
 })()
 
 const worker_file_promise = (async () => {
-  const response = await fetch('micropython-reduced.js', { cache: 'no-store' })
+  const response = await fetch('paraforge-worker.js', { cache: 'no-store' })
   // The worker response must be converted into text before being converted into
   // a file object, otherwise browser console will not provide error information
   // for error that occur inside the worker thread
   const text = await response.text()
-  return URL.createObjectURL(new File([text], 'micropython-reduced.js'))
+  return URL.createObjectURL(new File([text], 'paraforge-worker.js'))
 })()
 
 const paraforge_init_py_promise = (async () => {
