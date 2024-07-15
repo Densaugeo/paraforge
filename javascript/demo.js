@@ -1,4 +1,5 @@
 import * as paraforge from './paraforge.js'
+//import * as paraforge from 'https://unpkg.com/paraforge'
 window.paraforge = paraforge
 
 const paraforge_class_instance = new paraforge.Paraforge(1)

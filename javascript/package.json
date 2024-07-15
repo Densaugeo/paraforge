@@ -1,0 +1,25 @@
+{
+  "name": "paraforge",
+  "version": "0.0.4",
+  "description": "Web frontend package for paraforge procedural modeling tool",
+  "keywords": [],
+  "homepage": "https://github.com/Densaugeo/paraforge/",
+  "repository": {
+    "type": "git",
+    "url": "git@github.com:Densaugeo/paraforge.git"
+  },
+  "bugs": "https://github.com/Densaugeo/paraforge/issues",
+  "license": "SSPL-1.0",
+  "author": {
+    "name": "Den Antares",
+    "url": "https://den-antares.com/"
+  },
+  "browser": "paraforge.js",
+  "files": [
+    "paraforge.js",
+    "paraforge-worker.js",
+    "paraforge-rust.wasm",
+    "micropython.wasm",
+    "__init__.py"
+  ]
+}

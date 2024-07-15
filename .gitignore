@@ -3,6 +3,8 @@ test-temp
 __pycache__
 build
 dist
+javascript/__init__.py
+javascript/paraforge-rust.wasm
 paraforge/__pycache__
 paraforge/paraforge.wasm
 paraforge.egg-info

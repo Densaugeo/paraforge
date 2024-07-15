@@ -5,6 +5,10 @@ PYTEST_ARGS=--verbosity 2 --tb short
 build:
 	cd rust && cargo build --release --target wasm32-unknown-unknown
 	ln -sf ../rust/target/wasm32-unknown-unknown/release/paraforge.wasm paraforge/paraforge.wasm
+	
+	# Can't use symlinks for these because npm won't follow them
+	cp -f rust/target/wasm32-unknown-unknown/release/paraforge.wasm javascript/paraforge-rust.wasm
+	cp -f paraforge/__init__.py javascript/__init__.py
 
 test-scratch:
 	$(PY) test-scratch.py
@@ -31,6 +35,10 @@ upload:
 	# Remove keyring, otherwise it will nag about passwords every time I use pip
 	$(PY) -m pip uninstall -y keyring
 
+publish-npm:
+	cd javascript && npm publish
+
 clean:
 	cd rust && cargo clean
 	rm -rf paraforge/libparaforge.so build dist paraforge/__pycache__ paraforge.egg-info __pycache__ test-temp
+	rm -rf javascript/paraforge-rust.wasm javascript/__init__.py

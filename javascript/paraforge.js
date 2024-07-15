@@ -3,29 +3,31 @@
 /////////////////////////
 
 const rust_module_promise = (async () => {
-  const response = await fetch('../paraforge/paraforge.wasm',
+  const res = await fetch(new URL('paraforge-rust.wasm', import.meta.url),
     { cache: 'no-store' })
-  return await WebAssembly.compileStreaming(response)
+  return await WebAssembly.compileStreaming(res)
 })()
 
 const mp_module_promise = (async () => {
-  const response = await fetch('micropython.wasm',
+  const res = await fetch(new URL('micropython.wasm', import.meta.url),
     { cache: 'no-store' })
-  return await WebAssembly.compileStreaming(response)
+  return await WebAssembly.compileStreaming(res)
 })()
 
 const worker_file_promise = (async () => {
-  const response = await fetch('paraforge-worker.js', { cache: 'no-store' })
+  const res = await fetch(new URL('paraforge-worker.js', import.meta.url),
+    { cache: 'no-store' })
   // The worker response must be converted into text before being converted into
   // a file object, otherwise browser console will not provide error information
   // for error that occur inside the worker thread
-  const text = await response.text()
+  const text = await res.text()
   return URL.createObjectURL(new File([text], 'paraforge-worker.js'))
 })()
 
 const paraforge_init_py_promise = (async () => {
-  const response = await fetch('../paraforge/__init__.py', { cache: 'no-store' })
-  return await response.arrayBuffer()
+  const res = await fetch(new URL('__init__.py', import.meta.url),
+    { cache: 'no-store' })
+  return await res.arrayBuffer()
 })()
 
 const [
