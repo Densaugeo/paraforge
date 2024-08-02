@@ -64,9 +64,7 @@ export function f3D(type, properties={}, children=[]) {
   if(children.length) o3D.add(...children)
   return o3D
 }
-// Backwards compatibility, remove when stuff that refers to forgeObject3D is
-// refactored
-export const forgeObject3D = f3D
+globalThis.f3D = f3D
 
 /**
  * Appends result of daisy-chainable element maker f3D() as child object
@@ -81,24 +79,6 @@ THREE.Object3D.prototype.f3D = function() {
   this.add(result)
   return result
 }
-
-// forgeObject3D specialized for making meshes. Expects clonable meshes/groups to be prepared in advance
-// forgeMesh.meshes.yourMesh = someMesh;
-// forgeMesh('yourMesh', {position: [-5, 0, 5]}, [child_one, child_two]);
-// Probably going to get rid of this when I refactor castleMap.js, in favor of
-// passing o3Ds straight into f3D. Really this function is probably only around
-// because it mimiks the old structure I used for the meshmaker, which is now
-// long obsolete
-// The .clone() call should probably be moved into f3D, but castleMap's current
-// layout makes that difficult
-export function forgeMesh(meshKey, properties, children) {
-  if(forgeMesh.meshes[meshKey] == null) {
-    throw new Error('No mesh in THREE_Densaugeo.forgeMesh.meshes for mesh name "' + meshKey + '".');
-  }
-  
-  return forgeObject3D(forgeMesh.meshes[meshKey].clone(), properties, children);
-}
-forgeMesh.meshes = {};
 
 THREE.Vector3.prototype.rotateZ90 = function(count) {
   let previous_x
@@ -256,6 +236,7 @@ THREE.Matrix4.prototype.forge = function(a) {
 export const fM4 = function(options) {
   return new THREE.Matrix4().forge(options);
 }
+globalThis.fM4 = fM4
 
 // keyElement            - Event target for keyup/down events
 // mouseElement          - Event target for mouse / touch / scroll whell events

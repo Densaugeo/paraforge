@@ -12,8 +12,6 @@ import * as paraforge from './paraforge.js'
 export * as paraforge from './paraforge.js'
 
 THREE.ColorManagement.enabled = false
-export const f3D = THREE_Densaugeo.f3D
-export const fM4 = THREE_Densaugeo.fM4
 export const PI = Math.PI
 
 if(HTMLElement.prototype.requestFullscreen == null) {
