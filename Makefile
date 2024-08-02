@@ -6,6 +6,8 @@ build:
 	cd rust && cargo build --release --target wasm32-unknown-unknown
 	ln -sf ../rust/target/wasm32-unknown-unknown/release/paraforge.wasm paraforge/paraforge.wasm
 	
+	python javascript/icons/build-svg-icons.py
+	
 	# Can't use symlinks for these because npm won't follow them
 	cp -f rust/target/wasm32-unknown-unknown/release/paraforge.wasm javascript/paraforge-rust.wasm
 	cp -f paraforge/__init__.py javascript/__init__.py
@@ -24,6 +26,7 @@ install-dev:
 	chmod 775 test-all.sh
 	$(PY) -m venv venv-$(PY)
 	. venv-$(PY)/bin/activate; $(PY) -m pip install pytest wasmtime
+	cd javascript && npm install
 
 package:
 	$(PY) -m pip install --user --upgrade setuptools wheel

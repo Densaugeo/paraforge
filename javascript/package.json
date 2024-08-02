@@ -21,5 +21,8 @@
     "paraforge-rust.wasm",
     "micropython.wasm",
     "__init__.py"
-  ]
+  ],
+  "dependencies": {
+    "three": "0.155.0"
+  }
 }

@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <!-- TODO Curves are a bit odd and asymmetrical. Don't know how to fix -->
+  <path d="M12 3C8.686 3 6 5.686 6 9v11c0 1.104 0.896 2 2 2s2 -1 2 -1 2 1 2 1 2 -1 2 -1 2 1 2 1 2 -0.896 2 -2V9c0 -3.314 -2.686 -6 -6 -6z"/>
+  <circle cx="9" cy="11" r="1"/>
+  <circle cx="15" cy="11" r="1"/>
+</svg>

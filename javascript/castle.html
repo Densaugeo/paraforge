@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="color-scheme" content="dark">
+<meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1">
+
+<title>A Castle in the Cloud</title>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "./node_modules/three/build/three.module.js"
+  }
+}
+</script>
+
+<style>
+html, body, lego-castle {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  
+  margin: 0;
+  border: none;
+  padding: 0;
+  
+  /* In Chrome, overflows can occur due to Chrome storing viewport sizes as a
+  float internally, but reporting them rounded to the nearest integer. On
+  screens with resolution scaling this can cause overflows in situations where
+  the viewport size has been rounded up */
+  overflow: hidden;
+}
+</style>
+
+<script>
+EventTarget.prototype.on = EventTarget.prototype.addEventListener
+EventTarget.prototype.off = EventTarget.prototype.removeEventListener
+
+EventTarget.prototype.emit = function emit(type, properties) {
+  const e = new Event(type)
+  for(key in properties) {
+    e[key] = properties[key]
+  }
+  this.dispatchEvent(e)
+}
+</script>
+</head>
+
+<body>
+<den-viewer></den-viewer>
+</body>
+
+<script type="module">
+import * as index from './castle.js'
+for(const key in index) window[key] = index[key]
+
+window.viewer = document.getElementsByTagName('den-viewer')[0]
+viewer.focus()
+
+// Put stuff in scene
+await viewer.init()
+await viewer.paraforge.add_file('/first_model.py',
+  'first_model_variant.py')
+await viewer.paraforge.gen('first_model', 'first_model', [], {})
+await viewer.update_scene()
+
+// WebGL occupies entire browser window
+function resizer() {
+  viewer.width  = window.innerWidth
+  viewer.height = window.innerHeight
+}
+window.addEventListener('resize', resizer)
+resizer()
+</script>
+</html>
