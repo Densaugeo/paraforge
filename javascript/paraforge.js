@@ -21,7 +21,9 @@ const worker_file_promise = (async () => {
   // a file object, otherwise browser console will not provide error information
   // for error that occur inside the worker thread
   const text = await res.text()
-  return URL.createObjectURL(new File([text], 'paraforge-worker.js'))
+  return URL.createObjectURL(new File([text], 'paraforge-worker.js', {
+    type: 'text/javascript',
+  }))
 })()
 
 const paraforge_init_py_promise = (async () => {

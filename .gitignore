@@ -11,3 +11,5 @@ paraforge/__pycache__
 paraforge/paraforge.wasm
 paraforge.egg-info
 target
+test-files/node_modules
+test-files/package-lock.json

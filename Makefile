@@ -22,11 +22,19 @@ test:
 	rm -rf test-temp
 	. venv-$(PY)/bin/activate; $(PY) -u -m pytest $(PYTEST_ARGS) $(TEST)
 
+test-manual:
+	cd test-files && npm update
+	
+	@printf '\n\033[38;2;0;255;0m!!!! '
+	@printf 'Run manual tests by doing ???'
+	@printf ' !!!!\033[0m\n\n'
+
 install-dev:
 	chmod 775 test-all.sh
 	$(PY) -m venv venv-$(PY)
 	. venv-$(PY)/bin/activate; $(PY) -m pip install pytest wasmtime
 	cd javascript && npm install
+	cd test-files && npm install paraforge
 
 package:
 	$(PY) -m pip install --user --upgrade setuptools wheel

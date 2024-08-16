@@ -88,6 +88,16 @@ ShadowRoot.prototype.fT = function(text) {
   return this.appendChild(document.createTextNode(text))
 }
 
+EventTarget.prototype.on = EventTarget.prototype.addEventListener
+EventTarget.prototype.off = EventTarget.prototype.removeEventListener
+EventTarget.prototype.emit = function emit(type, properties) {
+  const e = new Event(type)
+  for(let key in properties) {
+    e[key] = properties[key]
+  }
+  this.dispatchEvent(e)
+}
+
 export const default_style = new CSSStyleSheet()
 default_style.replaceSync(`
 :host {
