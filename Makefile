@@ -33,7 +33,6 @@ install-dev:
 	chmod 775 test-all.sh
 	$(PY) -m venv venv-$(PY)
 	. venv-$(PY)/bin/activate; $(PY) -m pip install pytest wasmtime
-	cd javascript && npm install
 	cd test-files && npm install paraforge
 
 package:
