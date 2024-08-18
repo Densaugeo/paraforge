@@ -6,8 +6,8 @@ import * as CastleModules from './CastleModules.js';
 export * as CastleModules from './CastleModules.js';
 import * as PanelUI from './panelui.js'
 export * as PanelUI from './panelui.js'
-import { GLTFLoader } from './node_modules/three/examples/jsm/loaders/GLTFLoader.js'
-export { GLTFLoader } from './node_modules/three/examples/jsm/loaders/GLTFLoader.js'
+import { GLTFLoader } from 'three.GLTFLoader'
+export { GLTFLoader } from 'three.GLTFLoader'
 import * as paraforge from './paraforge.js'
 export * as paraforge from './paraforge.js'
 

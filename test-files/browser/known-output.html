@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="color-scheme" content="dark">
+<meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1">
+
+<title>Paraforge Test - Known Output</title>
+
+<script type="importmap">
+{
+  "imports": {
+    "paraforge": "/paraforge-local/paraforge.js"
+  }
+}
+</script>
+</head>
+
+<body>
+See console
+</body>
+
+<script type="module">
+import * as paraforge from 'paraforge'
+
+const paraforge_class_instance = new paraforge.Paraforge(1)
+await paraforge_class_instance.init()
+await paraforge_class_instance.add_file('/first_model.py',
+  '/examples/first_model.pf.py')
+await paraforge_class_instance.gen('first_model', 'first_model', [], {})
+const actual_glb = await paraforge_class_instance.serialize()
+
+const res = await fetch('/first_model.glb', { cache: 'reload' })
+const res_array_buffer = await res.arrayBuffer()
+const expected_glb = new Uint8Array(res_array_buffer)
+
+const decoder = new TextDecoder()
+console.log('Is the actual .glb as expected?')
+console.log(decoder.decode(expected_glb) == decoder.decode(actual_glb))
+//console.log(decoder.decode(expected_glb))
+//console.log(decoder.decode(actual_glb))
+for(let i = 0; i < expected_glb.length; ++i) {
+  if(expected_glb[i] != actual_glb[i]) {
+    console.log(`First difference at ${i}`)
+    break
+  }
+}
+</script>
+</html>
