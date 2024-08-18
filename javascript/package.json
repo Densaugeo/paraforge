@@ -1,6 +1,6 @@
 {
   "name": "paraforge",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "description": "Web frontend package for paraforge procedural modeling tool",
   "keywords": [],
   "homepage": "https://github.com/Densaugeo/paraforge/",
@@ -16,15 +16,16 @@
   },
   "browser": "paraforge.js",
   "files": [
+    "icons/svg-icons.js",
     "__init__.py",
     "helpers.js",
     "micropython.wasm",
     "paraforge-rust.wasm",
     "paraforge.js",
-    "three.Densaugeo.js",
-    
-    "paraforge-worker.js",
-    
+    "three.Den.js",
+    "ui-panels.js",
+    "viewer.js",
+    "worker.js"
   ],
   "dependencies": {
     "three": "0.155.0"
