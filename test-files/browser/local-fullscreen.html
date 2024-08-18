@@ -10,7 +10,7 @@
 <script type="importmap">
 {
   "imports": {
-    "paraforge": "/paraforge-local/castle.js",
+    "paraforge.viewer": "/paraforge-local/viewer.js",
     "three": "/node_modules/three/build/three.module.js",
     "three.GLTFLoader": "/node_modules/three/examples/jsm/loaders/GLTFLoader.js"
   }
@@ -21,13 +21,13 @@
 </head>
 
 <body>
-<den-viewer></den-viewer>
+<paraforge-viewer></paraforge-viewer>
 </body>
 
 <script type="module">
-import 'paraforge'
+import 'paraforge.viewer'
 
-window.viewer = document.getElementsByTagName('den-viewer')[0]
+window.viewer = document.getElementsByTagName('paraforge-viewer')[0]
 viewer.focus()
 
 // Put stuff in scene

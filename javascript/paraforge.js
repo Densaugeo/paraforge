@@ -15,13 +15,13 @@ const mp_module_promise = (async () => {
 })()
 
 const worker_file_promise = (async () => {
-  const res = await fetch(new URL('paraforge-worker.js', import.meta.url),
+  const res = await fetch(new URL('worker.js', import.meta.url),
     { cache: 'no-store' })
   // The worker response must be converted into text before being converted into
   // a file object, otherwise browser console will not provide error information
   // for error that occur inside the worker thread
   const text = await res.text()
-  return URL.createObjectURL(new File([text], 'paraforge-worker.js', {
+  return URL.createObjectURL(new File([text], 'worker.js', {
     type: 'text/javascript',
   }))
 })()

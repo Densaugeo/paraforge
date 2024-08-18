@@ -2,10 +2,10 @@ import * as THREE from 'three';
 export * as THREE from 'three';
 import * as THREE_Densaugeo from './three.Densaugeo.js';
 export * as THREE_Densaugeo from './three.Densaugeo.js';
-import * as CastleModules from './CastleModules.js';
-export * as CastleModules from './CastleModules.js';
-import * as PanelUI from './panelui.js'
-export * as PanelUI from './panelui.js'
+import * as ui_panels from './ui-panels.js'
+export * as ui_panels from './ui-panels.js'
+import * as helpers from './helpers.js'
+export * as helpers from './helpers.js'
 import { GLTFLoader } from 'three.GLTFLoader'
 export { GLTFLoader } from 'three.GLTFLoader'
 import * as paraforge from './paraforge.js'
@@ -27,7 +27,7 @@ if(HTMLElement.prototype.requestFullscreen == null) {
   }
 }
 
-export class DenViewer extends HTMLElement {
+export class ParaforgeViewer extends HTMLElement {
   timePrevious = 0
   timeDelta = 0
   
@@ -70,14 +70,14 @@ export class DenViewer extends HTMLElement {
     // Other Setup //
     /////////////////
     
-    this.fs_command = new PanelUI.DenCommand('maximize.svg', 'Fullscreen',
+    this.fs_command = new helpers.DenCommand('maximize.svg', 'Fullscreen',
     () => {
       if(document.fullscreenElement) document.exitFullscreen()
       else this.requestFullscreen()
     })
     
-    CastleModules.shaderChanger.container = this.shadow
-    CastleModules.shaderChanger.scene = this.scene
+    ui_panels.shaderChanger.container = this.shadow
+    ui_panels.shaderChanger.scene = this.scene
     
     ////////////////////////
     // Internal DOM Setup //
@@ -129,7 +129,7 @@ export class DenViewer extends HTMLElement {
       background: rgba(0, 0, 0, 0.75);
     }
     `)
-    this.shadow.adoptedStyleSheets = [PanelUI.default_style, sheet]
+    this.shadow.adoptedStyleSheets = [helpers.default_style, sheet]
     
     this.controls = new THREE_Densaugeo.FreeControls(this.camera, {
       keyElement: this,
@@ -143,9 +143,9 @@ export class DenViewer extends HTMLElement {
       this.renderer.domElement,
       fE('div', { id: 'sidebar', tabIndex: 1, accessKey: '1' }, [
         fE('den-command-slot', { key: '1',
-          command: CastleModules.helpPanel.command }),
+          command: ui_panels.helpPanel.command }),
         fE('den-command-slot', { key: '2',
-          command: CastleModules.shaderPanel.command }),
+          command: ui_panels.shaderPanel.command }),
         fE('den-command-slot', { key: '3',
           command: this.fs_command }),
         fE('den-command-slot', { key: '4' }),
@@ -153,13 +153,13 @@ export class DenViewer extends HTMLElement {
         fE('den-command-slot', { key: '6' }),
         fE('den-command-slot', { key: '7' }),
         fE('den-command-slot', { key: '8',
-          command: CastleModules.shaderPanel.toggles.local }),
+          command: ui_panels.shaderPanel.toggles.local }),
         fE('den-command-slot', { key: '9',
-          command: CastleModules.shaderPanel.toggles.ghost }),
+          command: ui_panels.shaderPanel.toggles.ghost }),
         fE('den-command-slot', { key: '0' }),
       ]),
-      CastleModules.helpPanel,
-      CastleModules.shaderPanel,
+      ui_panels.helpPanel,
+      ui_panels.shaderPanel,
     )
     
     // Needed to allow event listeners that return focus to this component when
@@ -245,4 +245,4 @@ export class DenViewer extends HTMLElement {
     }, e => { throw e })
   }
 }
-customElements.define('den-viewer', DenViewer)
+customElements.define('paraforge-viewer', ParaforgeViewer)

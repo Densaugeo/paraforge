@@ -1,12 +1,6 @@
-/**
- * @depends PanelUI.js
- * @depends EventEmitter.js
- * 
- * @description Modules for my cloud castle
- */
 import * as THREE from 'three'
 import * as THREE_Densaugeo from './three.Densaugeo.js';
-import * as PanelUI from './panelui.js'
+import * as helpers from './helpers.js'
 
 // Collection of shaders to switch between. The String 'original' designates
 // materials orignally defined on each object individually
@@ -55,7 +49,7 @@ export class ShaderChanger extends EventTarget {
 }
 export const shaderChanger = new ShaderChanger()
 
-/** @type PanelUI.DenPanel */
+/** @type helpers.DenPanel */
 export const helpPanel = fE('den-panel', {
   heading: 'Controls',
   command_icon: 'help-circle.svg',
@@ -143,12 +137,12 @@ export class DenShaderUI extends HTMLElement {
     this.shadow.adoptedStyleSheets = [sheet]
     
     this.toggles = {
-      original   : new PanelUI.DenCommand('camera.svg', 'Default'),
-      global     : new PanelUI.DenCommand('globe.svg',
+      original   : new helpers.DenCommand('camera.svg', 'Default'),
+      global     : new helpers.DenCommand('globe.svg',
                                           'Global coordinate grid'),
-      local      : new PanelUI.DenCommand('grid.svg', 'Local coordinate grid'),
-      ghost      : new PanelUI.DenCommand('ghost.svg', 'Ghostly'),
-      normals    : new PanelUI.DenCommand('right-angle.svg',
+      local      : new helpers.DenCommand('grid.svg', 'Local coordinate grid'),
+      ghost      : new helpers.DenCommand('ghost.svg', 'Ghostly'),
+      normals    : new helpers.DenCommand('right-angle.svg',
                                           'RBG-encoded normals'),
     }
     for(let [key, value] of Object.entries(this.toggles)) {
@@ -239,7 +233,7 @@ export class DenShaderUI extends HTMLElement {
 }
 customElements.define('den-shader-ui', DenShaderUI)
 
-/** @type PanelUI.DenPanel */
+/** @type helpers.DenPanel */
 export const shaderPanel = fE('den-panel', {
   heading: 'Shader Settings',
   command_icon: 'eye.svg',
@@ -249,7 +243,7 @@ export const shaderPanel = fE('den-panel', {
 ])
 shaderPanel.toggles = shaderPanel.querySelector('den-shader-ui').toggles
 
-/** @type PanelUI.DenPanel */
+/** @type helpers.DenPanel */
 export const inspectorPanel = fE('den-panel', {
   heading: 'Inspector',
   command_icon: 'search.svg',
