@@ -22,6 +22,7 @@ See console
 
 <script type="module">
 import * as paraforge from 'paraforge'
+for(let key in paraforge) window[key] = paraforge[key]
 
 const paraforge_class_instance = new paraforge.Paraforge(1)
 await paraforge_class_instance.init()

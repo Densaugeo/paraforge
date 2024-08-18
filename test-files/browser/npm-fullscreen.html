@@ -25,7 +25,8 @@
 </body>
 
 <script type="module">
-import 'paraforge.viewer'
+import * as paraforge_viewer from 'paraforge.viewer'
+for(let key in paraforge_viewer) window[key] = paraforge_viewer[key]
 
 window.viewer = document.getElementsByTagName('paraforge-viewer')[0]
 viewer.focus()
