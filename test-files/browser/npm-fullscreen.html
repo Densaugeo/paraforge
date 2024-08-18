@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="color-scheme" content="dark">
+<meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1">
+
+<title>Paraforge Test - npm FS</title>
+
+<script type="importmap">
+{
+  "imports": {
+    "paraforge.viewer": "/node_modules/paraforge/viewer.js",
+    "three": "/node_modules/three/build/three.module.js",
+    "three.GLTFLoader": "/node_modules/three/examples/jsm/loaders/GLTFLoader.js"
+  }
+}
+</script>
+
+<link rel="stylesheet" href="fullscreen.css" />
+</head>
+
+<body>
+<paraforge-viewer></paraforge-viewer>
+</body>
+
+<script type="module">
+import 'paraforge.viewer'
+
+window.viewer = document.getElementsByTagName('paraforge-viewer')[0]
+viewer.focus()
+
+// Put stuff in scene
+await viewer.init()
+await viewer.paraforge.add_file('/first_model.py',
+  '/examples/first_model.pf.py')
+await viewer.paraforge.gen('first_model', 'first_model', [], {})
+await viewer.update_scene()
+
+// WebGL occupies entire browser window
+function resizer() {
+  viewer.width  = window.innerWidth
+  viewer.height = window.innerHeight
+}
+window.addEventListener('resize', resizer)
+resizer()
+</script>
+</html>
