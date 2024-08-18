@@ -251,7 +251,15 @@ globalThis.fM4 = fM4
 // joystickRotSpeed      - Radians/ms per fraction displaced
 // joystickThrottleSpeed - Units/ms per fraction displaced
 
-export function FreeControls(camera, options) {
+export class FreeControls extends EventTarget {
+  /**
+   * @param {THREE.Camera} camera
+   * @param {Object} options
+   * @returns {FreeControls}
+   */
+  constructor(camera, options) {
+    super()
+  
   var self = this;
   
   const { keyElement, mouseElement } = options
@@ -551,6 +559,8 @@ export function FreeControls(camera, options) {
       }
     }
     
+    const previous_matrix = camera.matrix.clone()
+    
     if(translateX) {
       camera.matrix.translateX(translateX);
     }
@@ -586,13 +596,17 @@ export function FreeControls(camera, options) {
       camera.matrix.setPosition(position);
     }
     
-    camera.matrixWorldNeedsUpdate = true;
+    if(!camera.matrix.equals(previous_matrix)) {
+      camera.matrixWorldNeedsUpdate = true
+      self.dispatchEvent(new Event('change'))
+    }
     
     requestAnimationFrame(camLoop);
     
     translateX = translateY = translateZ = translateGlobalZ = rotateX = rotateY = rotateZ = rotateGlobalZ = 0;
   }
   camLoop();
+  }
 }
 FreeControls.prototype.panKeySpeed = 0.01;
 FreeControls.prototype.rotationKeySpeed = 0.001;

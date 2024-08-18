@@ -30,6 +30,7 @@ if(HTMLElement.prototype.requestFullscreen == null) {
 export class ParaforgeViewer extends HTMLElement {
   timePrevious = 0
   timeDelta = 0
+  renderNeeded = true
   
   constructor() {
     super()
@@ -62,6 +63,7 @@ export class ParaforgeViewer extends HTMLElement {
     this.camera = f3D(THREE.PerspectiveCamera, {
       fov: 45, near: 1, far: 1000,
       matrix: fM4({ tx: -10, ty: -10, tz: 5, rz: -PI/4 }).rotateX(0.42*PI),
+      matrixWorldNeedsUpdate: true,
     })
     
     this.gltf_loader = new GLTFLoader()
@@ -76,8 +78,8 @@ export class ParaforgeViewer extends HTMLElement {
       else this.requestFullscreen()
     })
     
-    ui_panels.shaderChanger.container = this.shadow
     ui_panels.shaderChanger.scene = this.scene
+    ui_panels.shaderChanger.on('change', () => this.renderNeeded = true)
     
     ////////////////////////
     // Internal DOM Setup //
@@ -136,6 +138,7 @@ export class ParaforgeViewer extends HTMLElement {
       mouseElement: this.renderer.domElement,
       panMouseSpeed: 0.05, dollySpeed: 5,
     })
+    this.controls.on('change', () => this.renderNeeded = true)
   }
   
   render() {
@@ -192,7 +195,10 @@ export class ParaforgeViewer extends HTMLElement {
     })
     
     this.renderer.setAnimationLoop(() => {
+      if(!this.renderNeeded) return
+      
       this.renderer.render(this.scene, this.camera)
+      this.renderNeeded = false
     })
   }
   
@@ -216,6 +222,7 @@ export class ParaforgeViewer extends HTMLElement {
     this.style.width = width + 'px'
     this.style.height = height + 'px'
     this.camera.updateProjectionMatrix()
+    this.renderNeeded = true
   }
   
   static get observedAttributes() {
