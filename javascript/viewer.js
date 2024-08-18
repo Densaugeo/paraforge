@@ -56,13 +56,31 @@ export class ParaforgeViewer extends HTMLElement {
       intensity: 3.14159,
     })
     
+    this.grid = this.scene.f3D(new THREE.GridHelper(20, 20, null, 0xc0ffff), {
+      euler: [PI/2, 0, 0],
+    })
+    
+    this.x_axis = this.scene.f3D(new THREE.ArrowHelper(
+      new THREE.Vector3(1, 0, 0), new THREE.Vector3(-10, 0, 0), 23, 0xff0000, 2,
+    ))
+    
+    this.y_axis = this.scene.f3D(new THREE.ArrowHelper(
+      new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, -10, 0), 23, 0x00ff00, 2,
+    ))
+    
+    // Prevent z-fighting between axes and grid lines
+    this.x_axis.children[0].material.depthFunc = THREE.AlwaysDepth
+    this.y_axis.children[0].material.depthFunc = THREE.AlwaysDepth
+    
+    this.generated_meshes = this.scene.f3D(THREE.Group)
+    
     this.renderer = new THREE.WebGLRenderer( { antialias: true } );
     this.renderer.setClearColor(0xc0c0c0, 1);
     this.renderer.outputColorSpace = THREE.LinearSRGBColorSpace
     
     this.camera = f3D(THREE.PerspectiveCamera, {
       fov: 45, near: 1, far: 1000,
-      matrix: fM4({ tx: -10, ty: -10, tz: 5, rz: -PI/4 }).rotateX(0.42*PI),
+      matrix: fM4({ tx: -12.5, ty: -12.5, tz: 6, rz: -PI/4 }).rotateX(0.40*PI),
       matrixWorldNeedsUpdate: true,
     })
     
@@ -78,7 +96,7 @@ export class ParaforgeViewer extends HTMLElement {
       else this.requestFullscreen()
     })
     
-    ui_panels.shaderChanger.scene = this.scene
+    ui_panels.shaderChanger.scene = this.generated_meshes
     ui_panels.shaderChanger.on('change', () => this.renderNeeded = true)
     
     ////////////////////////
@@ -247,8 +265,9 @@ export class ParaforgeViewer extends HTMLElement {
   async update_scene() {
     const glb = await this.paraforge.serialize()
     this.gltf_loader.parse(glb.buffer, '', gltf => {
-      this.scene.remove(this.generated_model)
-      this.scene.add(this.generated_model = gltf.scene)
+      this.generated_meshes.remove(this.generated_model)
+      this.generated_meshes.add(this.generated_model = gltf.scene)
+      this.renderNeeded = true
     }, e => { throw e })
   }
 }
