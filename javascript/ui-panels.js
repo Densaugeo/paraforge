@@ -1,15 +1,15 @@
 import * as THREE from 'three'
-import * as THREE_Densaugeo from './three.Densaugeo.js';
+import * as THREE_Den from './three.Den.js';
 import * as helpers from './helpers.js'
 
 // Collection of shaders to switch between. The String 'original' designates
 // materials orignally defined on each object individually
 export const shaders = {
-  global     : new THREE_Densaugeo.CoordinateMaterial(),
-  local      : new THREE_Densaugeo.CoordinateMaterial({ local: true,
+  global     : new THREE_Den.CoordinateMaterial(),
+  local      : new THREE_Den.CoordinateMaterial({ local: true,
                showAxes: new THREE.Vector3(0, 0, 0) }),
-  ghost      : new THREE_Densaugeo.PositionMaterial({ alpha: 0.8 }),
-  normals    : new THREE_Densaugeo.NormalMaterial(),
+  ghost      : new THREE_Den.PositionMaterial({ alpha: 0.8 }),
+  normals    : new THREE_Den.NormalMaterial(),
 }
 for(const [key, value] of Object.entries(shaders)) {
   value.name = key

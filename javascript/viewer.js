@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 export * as THREE from 'three';
-import * as THREE_Densaugeo from './three.Densaugeo.js';
-export * as THREE_Densaugeo from './three.Densaugeo.js';
+import * as THREE_Den from './three.Den.js';
+export * as THREE_Den from './three.Den.js';
 import * as ui_panels from './ui-panels.js'
 export * as ui_panels from './ui-panels.js'
 import * as helpers from './helpers.js'
@@ -131,7 +131,7 @@ export class ParaforgeViewer extends HTMLElement {
     `)
     this.shadow.adoptedStyleSheets = [helpers.default_style, sheet]
     
-    this.controls = new THREE_Densaugeo.FreeControls(this.camera, {
+    this.controls = new THREE_Den.FreeControls(this.camera, {
       keyElement: this,
       mouseElement: this.renderer.domElement,
       panMouseSpeed: 0.05, dollySpeed: 5,

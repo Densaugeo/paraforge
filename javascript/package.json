@@ -16,11 +16,15 @@
   },
   "browser": "paraforge.js",
   "files": [
-    "paraforge.js",
-    "paraforge-worker.js",
-    "paraforge-rust.wasm",
+    "__init__.py",
+    "helpers.js",
     "micropython.wasm",
-    "__init__.py"
+    "paraforge-rust.wasm",
+    "paraforge.js",
+    "three.Densaugeo.js",
+    
+    "paraforge-worker.js",
+    
   ],
   "dependencies": {
     "three": "0.155.0"
