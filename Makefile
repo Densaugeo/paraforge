@@ -34,6 +34,7 @@ test-manual:
 install-dev:
 	chmod 775 test-all.sh
 	$(PY) -m venv venv-$(PY)
+	venv-$(PY)/bin/python -m pip install --upgrade pip
 	venv-$(PY)/bin/python -m pip install pytest wasmtime reloadserver
 	cd test-files && npm install
 
