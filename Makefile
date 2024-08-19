@@ -22,14 +22,14 @@ test:
 	rm -rf test-temp
 	venv-$(PY)/bin/python -u -m pytest $(PYTEST_ARGS) $(TEST)
 
-test-manual:
+test-manual: test.pem
 	cd test-files && npm update
 	
 	@printf '\n\033[38;2;0;255;0m!!!! '
 	@printf 'Run manual tests by visiting pages served here:'
 	@printf ' !!!!\033[0m\n\n'
 	
-	cd test-files && ../venv-$(PY)/bin/python -m reloadserver
+	cd test-files && ../venv-$(PY)/bin/python -m reloadserver -c ../test.pem
 
 install-dev:
 	chmod 775 test-all.sh
@@ -50,6 +50,10 @@ upload:
 
 publish-npm:
 	cd javascript && npm publish
+
+test.pem:
+	openssl req -x509 -out test.pem -keyout test.pem -newkey rsa:3072 \
+		-nodes -sha256 -subj '/CN=test' -days 10000
 
 clean:
 	cd rust && cargo clean
