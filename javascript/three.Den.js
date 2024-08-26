@@ -299,15 +299,21 @@ export class FreeControls extends EventTarget {
     delete inputs[e.keyCode];
   });
   
-  // FF doesn't support standard mousewheel event
-  mouseElement.addEventListener('mousewheel', function(e) {
+  mouseElement.addEventListener('wheel', e => {
     e.preventDefault()
-    camera.matrix.translateZ(-e.wheelDelta*self.dollySpeed/360);
-  });
-  mouseElement.addEventListener('DOMMouseScroll', function(e) {
-    e.preventDefault()
-    camera.matrix.translateZ(e.detail*self.dollySpeed/3);
-  });
+    
+    // .wheelDeltaY preferred over .deltaY because .wheelDeltaY does not seem to
+    // be affected by .deltaMode and .deltaY has an extra 10% added in Firefox
+    // for no discernable reason. .deltaModeY consistently has an even number of
+    // pixels across browsers (120 in FF, 180 in Chrome)
+    const zoom_change = 1 + Math.abs(e.wheelDeltaY)*self.zoomSpeed/360
+    
+    const focalDistancePrevious = self.focalDistance
+    if(e.wheelDeltaY > 0) self.focalDistance /= zoom_change
+    else self.focalDistance *= zoom_change
+    
+    translateZ += self.focalDistance - focalDistancePrevious
+  })
   
   // Context menu interferes with mouse control
   mouseElement.addEventListener('contextmenu', function(e) {
@@ -351,13 +357,13 @@ export class FreeControls extends EventTarget {
   document.addEventListener('webkitpointerlockchange', pointerLockHandler);
   
   var mousePanHandler = function(e) {
-    translateX += (e.movementX || e.mozMovementX || e.webkitMovementX || 0)*self.panMouseSpeed;
-    translateY -= (e.movementY || e.mozMovementY || e.webkitMovementY || 0)*self.panMouseSpeed;
+    translateX -= (e.movementX || e.mozMovementX || e.webkitMovementX || 0)*self.panMouseSpeed*self.focalDistance;
+    translateY += (e.movementY || e.mozMovementY || e.webkitMovementY || 0)*self.panMouseSpeed*self.focalDistance;
   }
   
   var mouseRotHandler = function(e) {
-    rotateGlobalZ -= (e.movementX || e.mozMovementX || e.webkitMovementX || 0)*self.rotationMouseSpeed;
-    rotateX       -= (e.movementY || e.mozMovementY || e.webkitMovementY || 0)*self.rotationMouseSpeed;
+    orbitGlobalZ -= (e.movementX || e.mozMovementX || e.webkitMovementX || 0)*self.rotationMouseSpeed;
+    orbitX       -= (e.movementY || e.mozMovementY || e.webkitMovementY || 0)*self.rotationMouseSpeed;
   }
   
   // Touchmove events do not work when directly added, they have to be added by a touchstart listener
@@ -396,8 +402,8 @@ export class FreeControls extends EventTarget {
     e.preventDefault(); // Should be called at least on every touchmove event
     
     if(touchZeroPrevious) {
-      translateX += (e.touches[0].clientX - touchZeroPrevious.clientX)*self.  panTouchSpeed;
-      translateY -= (e.touches[0].clientY - touchZeroPrevious.clientY)*self.  panTouchSpeed;
+      translateX -= (e.touches[0].clientX - touchZeroPrevious.clientX)*self.  panTouchSpeed*self.focalDistance;
+      translateY += (e.touches[0].clientY - touchZeroPrevious.clientY)*self.  panTouchSpeed*self.focalDistance;
     }
     
     touchZeroPrevious = e.touches[0];
@@ -420,8 +426,8 @@ export class FreeControls extends EventTarget {
     }
     
     if(e.touches.length === 2) {
-      translateX += (e.touches[1].clientX - touchOnePrevious.clientX)*self.panTouchSpeed;
-      translateY -= (e.touches[1].clientY - touchOnePrevious.clientY)*self.panTouchSpeed;
+      translateX += (e.touches[1].clientX - touchOnePrevious.clientX)*self.panTouchSpeed*self.focalDistance;
+      translateY -= (e.touches[1].clientY - touchOnePrevious.clientY)*self.panTouchSpeed*self.focalDistance;
       
       touchOnePrevious = e.touches[1];
     }
@@ -522,17 +528,23 @@ export class FreeControls extends EventTarget {
   // Working variables for camLoop
   var translateX = 0, translateY = 0, translateZ = 0, translateGlobalZ = 0;
   var rotateX = 0, rotateY = 0, rotateZ = 0, rotateGlobalZ = 0, gp, axes;
+  let orbitX = 0, orbitGlobalZ = 0
+  
+  /** Not used for focus/blur, but rather for allowing orbit movement and
+  scaling pan movements */
+  self.focalDistance = self.focalDistance ?? 10
   
   var camLoop = function() {
     time = Date.now() - timePrevious;
     timePrevious += time;
     
-    if(inputs[self.keyStrafeLeft ]) translateX       -= time*self.panKeySpeed;
-    if(inputs[self.keyStrafeRight]) translateX       += time*self.panKeySpeed;
-    if(inputs[self.keyForward    ]) translateZ       -= time*self.panKeySpeed;
-    if(inputs[self.keyBackward   ]) translateZ       += time*self.panKeySpeed;
-    if(inputs[self.keyStrafeUp   ]) translateGlobalZ += time*self.panKeySpeed;
-    if(inputs[self.keyStrafeDown ]) translateGlobalZ -= time*self.panKeySpeed;
+    const fdt = self.focalDistance*time
+    if(inputs[self.keyStrafeLeft ]) translateX       -= fdt*self.panKeySpeed;
+    if(inputs[self.keyStrafeRight]) translateX       += fdt*self.panKeySpeed;
+    if(inputs[self.keyForward    ]) translateZ       -= fdt*self.panKeySpeed;
+    if(inputs[self.keyBackward   ]) translateZ       += fdt*self.panKeySpeed;
+    if(inputs[self.keyStrafeUp   ]) translateGlobalZ += fdt*self.panKeySpeed;
+    if(inputs[self.keyStrafeDown ]) translateGlobalZ -= fdt*self.panKeySpeed;
     if(inputs[self.keyTurnUp     ]) rotateX          += time*self.rotationKeySpeed;
     if(inputs[self.keyTurnDown   ]) rotateX          -= time*self.rotationKeySpeed;
     if(inputs[self.keyTurnLeft   ]) rotateGlobalZ    += time*self.rotationKeySpeed;
@@ -543,19 +555,19 @@ export class FreeControls extends EventTarget {
       axes = gp.axes;
       
       if(gp.mapping === '') {
-        if(Math.abs(axes[0]) > 0.05) translateX    += axes[0]*time*self.joystickPanSpeed;
-        if(Math.abs(axes[1]) > 0.05) translateY    -= axes[1]*time*self.joystickPanSpeed;
+        if(Math.abs(axes[0]) > 0.05) translateX    += axes[0]*time*self.joystickPanSpeed*self.focalDistance;
+        if(Math.abs(axes[1]) > 0.05) translateY    -= axes[1]*time*self.joystickPanSpeed*self.focalDistance;
         if(Math.abs(axes[3]) > 0.05) rotateGlobalZ -= axes[3]*time*self.joystickRotSpeed;
         if(Math.abs(axes[4]) > 0.05) rotateX       -= axes[4]*time*self.joystickRotSpeed;
         
         if(axes[2] > -0.95 || axes[5] > -0.95) translateZ -= (axes[5] - axes[2])*time*self.joystickThrottleSpeed/2;
       } else if(gp.mapping === 'standard') {
-        if(Math.abs(axes[0]) > 0.05) translateX    += axes[0]*time*self.joystickPanSpeed;
-        if(Math.abs(axes[1]) > 0.05) translateY    -= axes[1]*time*self.joystickPanSpeed;
+        if(Math.abs(axes[0]) > 0.05) translateX    += axes[0]*time*self.joystickPanSpeed*self.focalDistance;
+        if(Math.abs(axes[1]) > 0.05) translateY    -= axes[1]*time*self.joystickPanSpeed*self.focalDistance;
         if(Math.abs(axes[2]) > 0.05) rotateGlobalZ -= axes[2]*time*self.joystickRotSpeed;
         if(Math.abs(axes[3]) > 0.05) rotateX       -= axes[3]*time*self.joystickRotSpeed;
         
-        if(gp.buttons[6].value > 0.025 || gp.buttons[7].value > 0.025) translateZ -= (gp.buttons[7].value - gp.buttons[6].value)*time*self.joystickThrottleSpeed;
+        if(gp.buttons[6].value > 0.025 || gp.buttons[7].value > 0.025) translateZ -= (gp.buttons[7].value - gp.buttons[6].value)*time*self.joystickThrottleSpeed*self.focalDistance;
       }
     }
     
@@ -591,9 +603,28 @@ export class FreeControls extends EventTarget {
     
     if(rotateGlobalZ) {
       // Global Z rotation retains global position
-      var position = THREE.Vector3.prototype.setFromMatrixPosition(camera.matrix);
-      camera.matrix.multiplyMatrices(new THREE.Matrix4().makeRotationZ(rotateGlobalZ), camera.matrix);
+      const position = new THREE.Vector3().setFromMatrixPosition(camera.matrix)
+      camera.matrix.premultiply(new THREE.Matrix4().makeRotationZ(
+        rotateGlobalZ))
+      camera.matrix.setPosition(position)
+    }
+    
+    // Orbits a point self.focalDistance units in front of the camera
+    if(orbitX) {
+      camera.matrix.translateZ(-self.focalDistance)
+      camera.matrix.multiply(new THREE.Matrix4().makeRotationX(orbitX))
+      camera.matrix.translateZ(self.focalDistance)
+    }
+    
+    // Orbits a point self.focalDistance units in front of the camera
+    if(orbitGlobalZ) {
+      camera.matrix.translateZ(-self.focalDistance)
+      
+      const position = new THREE.Vector3().setFromMatrixPosition(camera.matrix)
+      camera.matrix.premultiply(new THREE.Matrix4().makeRotationZ(orbitGlobalZ))
       camera.matrix.setPosition(position);
+      
+      camera.matrix.translateZ(self.focalDistance)
     }
     
     if(!camera.matrix.equals(previous_matrix)) {
@@ -603,19 +634,19 @@ export class FreeControls extends EventTarget {
     
     requestAnimationFrame(camLoop);
     
-    translateX = translateY = translateZ = translateGlobalZ = rotateX = rotateY = rotateZ = rotateGlobalZ = 0;
+    translateX = translateY = translateZ = translateGlobalZ = rotateX = rotateY = rotateZ = rotateGlobalZ = orbitX = orbitGlobalZ = 0;
   }
   camLoop();
   }
 }
-FreeControls.prototype.panKeySpeed = 0.01;
+FreeControls.prototype.panKeySpeed = 0.001;
 FreeControls.prototype.rotationKeySpeed = 0.001;
-FreeControls.prototype.panMouseSpeed = 0.1;
-FreeControls.prototype.rotationMouseSpeed = 0.002;
-FreeControls.prototype.panTouchSpeed = 0.1;
-FreeControls.prototype.rotatationTouchSpeed = 0.002;
+FreeControls.prototype.panMouseSpeed = 0.005;
+FreeControls.prototype.rotationMouseSpeed = 0.005;
+FreeControls.prototype.panTouchSpeed = 0.005;
+FreeControls.prototype.rotatationTouchSpeed = 0.005;
 FreeControls.prototype.rotationAccelSpeed = 1;
-FreeControls.prototype.dollySpeed = 1;
+FreeControls.prototype.zoomSpeed = 0.5;
 FreeControls.prototype.touchThrottleSpeed = 0.0005;
 FreeControls.prototype.joystickPanSpeed = 0.05;
 FreeControls.prototype.joystickRotSpeed = 0.003;

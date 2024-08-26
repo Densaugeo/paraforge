@@ -83,6 +83,9 @@ export class ParaforgeViewer extends HTMLElement {
       matrix: fM4({ tx: -12.5, ty: -12.5, tz: 6, rz: -PI/4 }).rotateX(0.40*PI),
       matrixWorldNeedsUpdate: true,
     })
+    const planar_distance_to_z_axis = (12.5**2 + 12.5**2)**0.5
+    const initial_focal_distance = planar_distance_to_z_axis*
+      (1 + Math.cos(0.4*PI)**2)**0.5
     
     this.gltf_loader = new GLTFLoader()
     
@@ -154,7 +157,7 @@ export class ParaforgeViewer extends HTMLElement {
     this.controls = new THREE_Den.FreeControls(this.camera, {
       keyElement: this,
       mouseElement: this.renderer.domElement,
-      panMouseSpeed: 0.05, dollySpeed: 5,
+      focalDistance: initial_focal_distance,
     })
     this.controls.on('change', () => this.renderNeeded = true)
   }
