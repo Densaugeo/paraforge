@@ -345,7 +345,18 @@ export class FreeControls extends EventTarget {
   var pointerLockHandler = function(e) {
     var pointerLockElement = document.pointerLockElement || document.mozPointerLockElement || document.webkitPointerLockElement;
     
-    if(pointerLockElement === mouseElement) {
+    // If mouseElement is inside a shadow tree, the pointer lock will land on
+    // the shadow host instead, which must be accounted for when checking if
+    // mouseElement has pointer lock
+    let has_pointer_lock = false
+    for(let el = mouseElement; el = el.parentNode ?? el.host; el) {
+      if(el === pointerLockElement) {
+        has_pointer_lock = true
+        break
+      }
+    }
+    
+    if(has_pointer_lock) {
       document.addEventListener('mousemove', mouseRotHandler);
     } else {
       document.removeEventListener('mousemove', mouseRotHandler);
