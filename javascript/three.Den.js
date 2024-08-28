@@ -328,18 +328,18 @@ export class FreeControls extends EventTarget {
     } else if(e.which === 1) {
       mouseElement.addEventListener('mousemove', mousePanHandler);
     } else if(e.which === 3) {
-      mouseElement.addEventListener('mousemove', mouseRotHandler);
+      mouseElement.addEventListener('mousemove', mouseOrbHandler);
     }
   });
   
   mouseElement.addEventListener('mouseup', function() {
     mouseElement.removeEventListener('mousemove', mousePanHandler);
-    mouseElement.removeEventListener('mousemove', mouseRotHandler);
+    mouseElement.removeEventListener('mousemove', mouseOrbHandler);
   });
   
   mouseElement.addEventListener('mouseleave', function() {
     mouseElement.removeEventListener('mousemove', mousePanHandler);
-    mouseElement.removeEventListener('mousemove', mouseRotHandler);
+    mouseElement.removeEventListener('mousemove', mouseOrbHandler);
   });
   
   var pointerLockHandler = function(e) {
@@ -373,8 +373,13 @@ export class FreeControls extends EventTarget {
   }
   
   var mouseRotHandler = function(e) {
-    orbitGlobalZ -= (e.movementX || e.mozMovementX || e.webkitMovementX || 0)*self.rotationMouseSpeed;
-    orbitX       -= (e.movementY || e.mozMovementY || e.webkitMovementY || 0)*self.rotationMouseSpeed;
+    rotateGlobalZ -= (e.movementX || e.mozMovementX || e.webkitMovementX || 0)*self.rotationMouseSpeed;
+    rotateX       -= (e.movementY || e.mozMovementY || e.webkitMovementY || 0)*self.rotationMouseSpeed;
+  }
+  
+  var mouseOrbHandler = function(e) {
+    orbitGlobalZ -= (e.movementX || e.mozMovementX || e.webkitMovementX || 0)*self.orbitMouseSpeed;
+    orbitX       -= (e.movementY || e.mozMovementY || e.webkitMovementY || 0)*self.orbitMouseSpeed;
   }
   
   // Touchmove events do not work when directly added, they have to be added by a touchstart listener
@@ -653,7 +658,8 @@ export class FreeControls extends EventTarget {
 FreeControls.prototype.panKeySpeed = 0.001;
 FreeControls.prototype.rotationKeySpeed = 0.001;
 FreeControls.prototype.panMouseSpeed = 0.005;
-FreeControls.prototype.rotationMouseSpeed = 0.005;
+FreeControls.prototype.rotationMouseSpeed = 0.004;
+FreeControls.prototype.orbitMouseSpeed = 0.005;
 FreeControls.prototype.panTouchSpeed = 0.005;
 FreeControls.prototype.rotatationTouchSpeed = 0.005;
 FreeControls.prototype.rotationAccelSpeed = 1;
