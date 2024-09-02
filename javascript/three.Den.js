@@ -306,13 +306,7 @@ export class FreeControls extends EventTarget {
     // be affected by .deltaMode and .deltaY has an extra 10% added in Firefox
     // for no discernable reason. .deltaModeY consistently has an even number of
     // pixels across browsers (120 in FF, 180 in Chrome)
-    const zoom_change = 1 + Math.abs(e.wheelDeltaY)*self.zoomSpeed/360
-    
-    const focalDistancePrevious = self.focalDistance
-    if(e.wheelDeltaY > 0) self.focalDistance /= zoom_change
-    else self.focalDistance *= zoom_change
-    
-    translateZ += self.focalDistance - focalDistancePrevious
+    zoom(e.wheelDeltaY*self.zoomMouseSpeed/360)
   })
   
   // Context menu interferes with mouse control
@@ -326,9 +320,9 @@ export class FreeControls extends EventTarget {
       var requestPointerLock = mouseElement.requestPointerLock || mouseElement.mozRequestPointerLock || mouseElement.webkitRequestPointerLock;
       requestPointerLock.call(mouseElement);
     } else if(e.which === 1) {
-      mouseElement.addEventListener('mousemove', mousePanHandler);
-    } else if(e.which === 3) {
       mouseElement.addEventListener('mousemove', mouseOrbHandler);
+    } else if(e.which === 3) {
+      mouseElement.addEventListener('mousemove', mousePanHandler);
     }
   });
   
@@ -387,21 +381,17 @@ export class FreeControls extends EventTarget {
   mouseElement.addEventListener('touchstart', function(e) {
     e.preventDefault();
     
-    if(e.touches.length === 1) {
-      accelActive = true;
-      
+    if(e.touches.length === e.changedTouches.length) {
       var rect = mouseElement.getBoundingClientRect();
-      var lateralFraction = (e.touches[0].clientX - rect.left)/rect.width;
+      var right_edge = rect.left + rect.width;
       
-      if(lateralFraction < 0.9) {
-        touchZeroPrevious = e.touches[0];
+      if(right_edge - e.touches[0].clientX > 36) {
         mouseElement.addEventListener('touchmove', TouchHandler);
       } else {
         throttleZero = e.touches[0].clientY;
         mouseElement.addEventListener('touchmove', touchThrottleHandler);
+        accelActive = true
       }
-    } else if(e.touches.length === 2) {
-      touchOnePrevious = e.touches[1];
     }
   });
   
@@ -411,73 +401,128 @@ export class FreeControls extends EventTarget {
       mouseElement.removeEventListener('touchmove', touchThrottleHandler);
       touchThrottle = rotationRatePitch = rotationRateYaw = rotationRateRoll = 0;
       accelActive = false;
+      
+      // The rest of this block is for ensuring the camera's local Y axis
+      // ('up' on the screen) is coplanar with global Z
+      
+      const cam_position = new THREE.Vector3().setFromMatrixPosition(
+        camera.matrix)
+      const local_x = new THREE.Vector3(1, 0, 0).applyMatrix4(camera.matrix)
+        .sub(cam_position)
+      const local_y = new THREE.Vector3(0, 1, 0).applyMatrix4(camera.matrix)
+        .sub(cam_position)
+      const local_z = new THREE.Vector3(0, 0, 1).applyMatrix4(camera.matrix)
+        .sub(cam_position)
+      
+      // The local Z axis partially defines the target plane. The other
+      // requirement is that the target plane be coplanar with the global Z
+      // axis, so its normal must be in the global XY plane. Thus, the target
+      // normal can be found by projecting local Z into the global XY plane and
+      // finding the normal
+      const target_normal = new THREE.Vector3(local_z.y, -local_z.x).normalize()
+      
+      // Since the camera's local X axis is perpendicular to local Y and, in the
+      // target transform, will also be perpendicular to global Z, the local X
+      // axis must end up parallel to the target normal. First, let's check how
+      // far away it currently is (the dot product should theoretecially
+      // already be normalized, but floating point error may put it outside the
+      // valid input range for arccosine):
+      const dot = Math.min(Math.max(-1, target_normal.dot(local_x)), 1)
+      
+      // Absolute value is required, because if it is not used here orbiting
+      // past the vertical axis causes additional rotations
+      const angle = Math.acos(Math.abs(dot))
+      
+      // Only correct camera rotation if local Z is at least 10° away from
+      // global Z. If it is too close to vertical, (such as when looking
+      // directly downward with touch-look) small angular changes cause the
+      // screen to spin a lot
+      if(Math.abs(local_y.z) > Math.PI/18) {
+        // Getting the sign of rotation right is very tricky...this technique
+        // of testing whether the local X and Y axes point up or down seems to
+        // work for upside-down cameras, screen rotations, everything I tested
+        if(local_y.z > 0 === local_x.z > 0) rotateZ -= angle
+        else rotateZ += angle
+      }
     }
+    
+    touchesPrevious = []
   });
   
   var TouchHandler = function(e) {
     e.preventDefault(); // Should be called at least on every touchmove event
     
-    if(touchZeroPrevious) {
-      translateX -= (e.touches[0].clientX - touchZeroPrevious.clientX)*self.  panTouchSpeed*self.focalDistance;
-      translateY += (e.touches[0].clientY - touchZeroPrevious.clientY)*self.  panTouchSpeed*self.focalDistance;
+    if(e.touches.length === 1 && touchesPrevious.length === 1) {
+      orbitGlobalZ -= self.orbitTouchSpeed*
+        (e.touches[0].clientX - touchesPrevious[0].clientX)
+      orbitX       -= self.orbitTouchSpeed*
+        (e.touches[0].clientY - touchesPrevious[0].clientY)
     }
     
-    touchZeroPrevious = e.touches[0];
-    
-    if(e.touches.length === 2) {
-      if(touchOnePrevious) {
-        rotateX       -= (e.touches[1].clientY - touchOnePrevious.clientY)*self.rotatationTouchSpeed;
-        rotateGlobalZ -= (e.touches[1].clientX - touchOnePrevious.clientX)*self.rotatationTouchSpeed;
-      }
+    if(e.touches.length === 2 && touchesPrevious.length === 2) {
+      const distancePrevious = (
+        (touchesPrevious[0].clientX - touchesPrevious[1].clientX)**2 +
+        (touchesPrevious[0].clientY - touchesPrevious[1].clientY)**2
+      )**0.5
       
-      touchOnePrevious = e.touches[1];
+      const distance = (
+        (e.touches[0].clientX - e.touches[1].clientX)**2 +
+        (e.touches[0].clientY - e.touches[1].clientY)**2
+      )**0.5
+      
+      zoom((distance - distancePrevious)*self.zoomTouchSpeed)
     }
+    
+    if(e.touches.length === 3 && touchesPrevious.length === 3) {
+      translateX -= self.panTouchSpeed*self.focalDistance*(
+        (e.touches[0].clientX - touchesPrevious[0].clientX) +
+        (e.touches[1].clientX - touchesPrevious[1].clientX) +
+        (e.touches[2].clientX - touchesPrevious[2].clientX)
+      )/3
+      translateY += self.panTouchSpeed*self.focalDistance*(
+        (e.touches[0].clientY - touchesPrevious[0].clientY) +
+        (e.touches[1].clientY - touchesPrevious[1].clientY) +
+        (e.touches[2].clientY - touchesPrevious[2].clientY)
+      )/3
+    }
+    
+    touchesPrevious = e.touches
   }
   
   var touchThrottleHandler = function(e) {
     e.preventDefault(); // Should be called at least on every touchmove event
     
     if(throttleZero) {
-      touchThrottle = (e.touches[0].clientY - throttleZero)*self.touchThrottleSpeed;
+      touchThrottle = (e.touches[0].clientY - throttleZero)*self.touchThrottleSpeed*self.focalDistance;
     }
     
-    if(e.touches.length === 2) {
-      translateX += (e.touches[1].clientX - touchOnePrevious.clientX)*self.panTouchSpeed*self.focalDistance;
-      translateY -= (e.touches[1].clientY - touchOnePrevious.clientY)*self.panTouchSpeed*self.focalDistance;
-      
-      touchOnePrevious = e.touches[1];
+    if(e.touches.length === 2 && touchesPrevious.length === 2) {
+      translateX -= (e.touches[1].clientX - touchesPrevious[1].clientX)*self.panTouchSpeed*self.focalDistance;
+      translateY += (e.touches[1].clientY - touchesPrevious[1].clientY)*self.panTouchSpeed*self.focalDistance;
     }
+    
+    touchesPrevious = e.touches
   }
   
   screen.orientation.addEventListener('change', () => {
-    touchZeroPrevious = null
-    touchOnePrevious = null
-    throttleZero = null
+    // Touch-rotate etc. can be left on, but must reset their basis
+    touchesPrevious = []
     
-    const orientation = getOrientation()
-    camera.matrix.multiply(new THREE.Matrix4().makeRotationZ(
-      Math.PI/180*(orientationPrevious - orientation)
-    ))
-    orientationPrevious = orientation
+    // Throttle needs to be reset, because the throttle zone moves
+    mouseElement.removeEventListener('touchmove', touchThrottleHandler)
+    touchThrottle = rotationRatePitch = rotationRateYaw = rotationRateRoll = 0
+    accelActive = false
   })
   
   var rotationRateConversion = 0.000017453292519943296;
   
-  // Browser detection shim for Chome, since they use different units for DeviceRotationRate without
-  // providing any documentation or other way of detecting what units are being used
-  if(window.chrome) {
-    rotationRateConversion = 0.001;
-  }
-  
   var accelHandler = function(e) {
     if(accelActive) {
-      var orientation = getOrientation()
-      
       // Constant = Math.PI/180/1000
-      if(orientation === 0) {
+      if(screen.orientation.angle === 0) {
         rotationRatePitch = -e.rotationRate.alpha*rotationRateConversion*self.rotationAccelSpeed;
         rotationRateYaw   =  e.rotationRate.beta *rotationRateConversion*self.rotationAccelSpeed;
-      } else if(orientation === 90)  {
+      } else if(screen.orientation.angle === 90)  {
         rotationRateYaw   =  e.rotationRate.alpha*rotationRateConversion*self.rotationAccelSpeed;
         rotationRatePitch =  e.rotationRate.beta *rotationRateConversion*self.rotationAccelSpeed;
       } else {
@@ -486,12 +531,6 @@ export class FreeControls extends EventTarget {
       }
       rotationRateRoll  = e.rotationRate.gamma*rotationRateConversion*self.rotationAccelSpeed;
     }
-  }
-  
-  var getOrientation = () => {
-    let orientation = screen.orientation.angle
-    if(navigator.userAgent.includes('iPhone')) orientation = 360 - orientation
-    return orientation % 360
   }
   
   // Attach devicemotion listener on startup because attaching it during a touchstart event is horribly buggy in FF. Except on iPhone, then permission has to be requested (which is also inconsistent)
@@ -532,9 +571,7 @@ export class FreeControls extends EventTarget {
     }
   });
   
-  var touchZeroPrevious;
-  var touchOnePrevious;
-  var orientationPrevious = getOrientation();
+  let touchesPrevious = []
   var throttleZero, touchThrottle = 0;
   var rotationRatePitch = 0, rotationRateYaw = 0, rotationRateRoll = 0, accelActive = false;
   
@@ -549,6 +586,20 @@ export class FreeControls extends EventTarget {
   /** Not used for focus/blur, but rather for allowing orbit movement and
   scaling pan movements */
   self.focalDistance = self.focalDistance ?? 10
+  
+  /**
+   * @param {number} factor - Fraction by which to zoom in or out. For example,
+   *                          passing 0.5 divides focal distance by 1.5 and
+   *                          passing -0.5 multiple it by 1.5
+   */
+  const zoom = factor => {
+    const focalDistancePrevious = self.focalDistance
+    
+    if(factor > 0) self.focalDistance /= 1 + factor
+    else self.focalDistance *= 1 - factor
+    
+    translateZ += self.focalDistance - focalDistancePrevious
+  }
   
   var camLoop = function() {
     time = Date.now() - timePrevious;
@@ -570,20 +621,31 @@ export class FreeControls extends EventTarget {
       gp = navigator.getGamepads()[i];
       axes = gp.axes;
       
-      if(gp.mapping === '') {
-        if(Math.abs(axes[0]) > 0.05) translateX    += axes[0]*time*self.joystickPanSpeed*self.focalDistance;
-        if(Math.abs(axes[1]) > 0.05) translateY    -= axes[1]*time*self.joystickPanSpeed*self.focalDistance;
-        if(Math.abs(axes[3]) > 0.05) rotateGlobalZ -= axes[3]*time*self.joystickRotSpeed;
-        if(Math.abs(axes[4]) > 0.05) rotateX       -= axes[4]*time*self.joystickRotSpeed;
-        
-        if(axes[2] > -0.95 || axes[5] > -0.95) translateZ -= (axes[5] - axes[2])*time*self.joystickThrottleSpeed/2;
-      } else if(gp.mapping === 'standard') {
-        if(Math.abs(axes[0]) > 0.05) translateX    += axes[0]*time*self.joystickPanSpeed*self.focalDistance;
-        if(Math.abs(axes[1]) > 0.05) translateY    -= axes[1]*time*self.joystickPanSpeed*self.focalDistance;
-        if(Math.abs(axes[2]) > 0.05) rotateGlobalZ -= axes[2]*time*self.joystickRotSpeed;
-        if(Math.abs(axes[3]) > 0.05) rotateX       -= axes[3]*time*self.joystickRotSpeed;
-        
-        if(gp.buttons[6].value > 0.025 || gp.buttons[7].value > 0.025) translateZ -= (gp.buttons[7].value - gp.buttons[6].value)*time*self.joystickThrottleSpeed*self.focalDistance;
+      if(gp.mapping !== '') {
+        console.warn(`Gamepad ${i} reports non-standard mapping ${gp.mapping}`)
+      }
+      
+      if(Math.abs(axes[0]) > 0.05) translateX    += axes[0]*time*self.joystickPanSpeed*self.focalDistance;
+      if(Math.abs(axes[1]) > 0.05) translateY    -= axes[1]*time*self.joystickPanSpeed*self.focalDistance;
+      if(Math.abs(axes[2]) > 0.05) rotateGlobalZ -= axes[2]*time*self.joystickRotSpeed;
+      if(Math.abs(axes[3]) > 0.05) rotateX       -= axes[3]*time*self.joystickRotSpeed;
+      
+      // There used to be two separate mappings for my XBox and Logitech
+      // gamepads. However, at some they started behaving the same...except now
+      // they work differently on Firefox on Linux than on other browser/OS
+      // combinations. The key difference is whether the analog triggers are
+      // reported as axes (Firefox on Linux) or buttons (everything else I
+      // tested)
+      if(gp.axes.length >= 6) {
+        if(axes[4] > -0.95 || axes[5] > -0.95) {
+          translateZ -= (axes[5] - axes[4])/2*
+            time*self.joystickThrottleSpeed*self.focalDistance;
+        }
+      } else {
+        if(gp.buttons[6].value > 0.025 || gp.buttons[7].value > 0.025) {
+          translateZ -= (gp.buttons[7].value - gp.buttons[6].value)*
+            time*self.joystickThrottleSpeed*self.focalDistance;
+        }
       }
     }
     
@@ -618,10 +680,15 @@ export class FreeControls extends EventTarget {
     }
     
     if(rotateGlobalZ) {
+      // Sign of rotation must be flipped if camera is upside down (the sign of
+      // element 6 indicates whether local Y points above or below the global
+      // XY plane)
+      const sign = Math.sign(camera.matrix.elements[6])
+      
       // Global Z rotation retains global position
       const position = new THREE.Vector3().setFromMatrixPosition(camera.matrix)
       camera.matrix.premultiply(new THREE.Matrix4().makeRotationZ(
-        rotateGlobalZ))
+        sign*rotateGlobalZ))
       camera.matrix.setPosition(position)
     }
     
@@ -634,10 +701,16 @@ export class FreeControls extends EventTarget {
     
     // Orbits a point self.focalDistance units in front of the camera
     if(orbitGlobalZ) {
+      // Sign of rotation must be flipped if camera is upside down (the sign of
+      // element 6 indicates whether local Y points above or below the global
+      // XY plane)
+      const sign = Math.sign(camera.matrix.elements[6])
+      
       camera.matrix.translateZ(-self.focalDistance)
       
       const position = new THREE.Vector3().setFromMatrixPosition(camera.matrix)
-      camera.matrix.premultiply(new THREE.Matrix4().makeRotationZ(orbitGlobalZ))
+      camera.matrix.premultiply(new THREE.Matrix4().makeRotationZ(
+        sign*orbitGlobalZ))
       camera.matrix.setPosition(position);
       
       camera.matrix.translateZ(self.focalDistance)
@@ -657,17 +730,18 @@ export class FreeControls extends EventTarget {
 }
 FreeControls.prototype.panKeySpeed = 0.001;
 FreeControls.prototype.rotationKeySpeed = 0.001;
-FreeControls.prototype.panMouseSpeed = 0.005;
-FreeControls.prototype.rotationMouseSpeed = 0.004;
+FreeControls.prototype.panMouseSpeed = 0.001;
+FreeControls.prototype.rotationMouseSpeed = 0.005;
 FreeControls.prototype.orbitMouseSpeed = 0.005;
-FreeControls.prototype.panTouchSpeed = 0.005;
-FreeControls.prototype.rotatationTouchSpeed = 0.005;
+FreeControls.prototype.panTouchSpeed = 0.002;
+FreeControls.prototype.orbitTouchSpeed = 0.005;
+FreeControls.prototype.zoomTouchSpeed = 0.005;
 FreeControls.prototype.rotationAccelSpeed = 1;
-FreeControls.prototype.zoomSpeed = 0.5;
-FreeControls.prototype.touchThrottleSpeed = 0.0005;
-FreeControls.prototype.joystickPanSpeed = 0.05;
+FreeControls.prototype.zoomMouseSpeed = 0.5;
+FreeControls.prototype.touchThrottleSpeed = 0.00005;
+FreeControls.prototype.joystickPanSpeed = 0.003;
 FreeControls.prototype.joystickRotSpeed = 0.003;
-FreeControls.prototype.joystickThrottleSpeed = 0.05;
+FreeControls.prototype.joystickThrottleSpeed = 0.005;
 FreeControls.prototype.keyTurnLeft = 37; // Left arrow
 FreeControls.prototype.keyTurnRight = 39; // Right arrow
 FreeControls.prototype.keyTurnUp = 38; // Up arrow
