@@ -362,8 +362,15 @@ export class FreeControls extends EventTarget {
   document.addEventListener('webkitpointerlockchange', pointerLockHandler);
   
   var mousePanHandler = function(e) {
-    translateX -= (e.movementX || e.mozMovementX || e.webkitMovementX || 0)*self.panMouseSpeed*self.focalDistance;
-    translateY += (e.movementY || e.mozMovementY || e.webkitMovementY || 0)*self.panMouseSpeed*self.focalDistance;
+    const rect = mouseElement.getBoundingClientRect()
+    
+    /** Height of the viewport at focal distance */
+    const focal_height = 2*Math.tan(camera.fov/2*Math.PI/180)*self.focalDistance
+    
+    translateX -= (e.movementX || e.mozMovementX || e.webkitMovementX || 0)/
+      rect.width *focal_height*self.panMouseSpeed*camera.aspect
+    translateY += (e.movementY || e.mozMovementY || e.webkitMovementY || 0)/
+      rect.height*focal_height*self.panMouseSpeed
   }
   
   var mouseRotHandler = function(e) {
@@ -474,16 +481,22 @@ export class FreeControls extends EventTarget {
     }
     
     if(e.touches.length === 3 && touchesPrevious.length === 3) {
-      translateX -= self.panTouchSpeed*self.focalDistance*(
+      const rect = mouseElement.getBoundingClientRect()
+      
+      /** Height of the viewport at focal distance */
+      const focal_height = 2*Math.tan(camera.fov/2*Math.PI/180)*
+        self.focalDistance
+      
+      translateX -= self.panTouchSpeed*(
         (e.touches[0].clientX - touchesPrevious[0].clientX) +
         (e.touches[1].clientX - touchesPrevious[1].clientX) +
         (e.touches[2].clientX - touchesPrevious[2].clientX)
-      )/3
-      translateY += self.panTouchSpeed*self.focalDistance*(
+      )/3/rect.width *focal_height*camera.aspect
+      translateY += self.panTouchSpeed*(
         (e.touches[0].clientY - touchesPrevious[0].clientY) +
         (e.touches[1].clientY - touchesPrevious[1].clientY) +
         (e.touches[2].clientY - touchesPrevious[2].clientY)
-      )/3
+      )/3/rect.height*focal_height
     }
     
     touchesPrevious = e.touches
@@ -497,8 +510,16 @@ export class FreeControls extends EventTarget {
     }
     
     if(e.touches.length === 2 && touchesPrevious.length === 2) {
-      translateX -= (e.touches[1].clientX - touchesPrevious[1].clientX)*self.panTouchSpeed*self.focalDistance;
-      translateY += (e.touches[1].clientY - touchesPrevious[1].clientY)*self.panTouchSpeed*self.focalDistance;
+      const rect = mouseElement.getBoundingClientRect()
+      
+      /** Height of the viewport at focal distance */
+      const focal_height = 2*Math.tan(camera.fov/2*Math.PI/180)*
+        self.focalDistance
+      
+      translateX -= (e.touches[1].clientX - touchesPrevious[1].clientX)/
+        rect.width *focal_height*self.panTouchSpeed*camera.aspect
+      translateY += (e.touches[1].clientY - touchesPrevious[1].clientY)/
+        rect.height*focal_height*self.panTouchSpeed
     }
     
     touchesPrevious = e.touches
@@ -730,10 +751,10 @@ export class FreeControls extends EventTarget {
 }
 FreeControls.prototype.panKeySpeed = 0.001;
 FreeControls.prototype.rotationKeySpeed = 0.001;
-FreeControls.prototype.panMouseSpeed = 0.001;
+FreeControls.prototype.panMouseSpeed = 1;
 FreeControls.prototype.rotationMouseSpeed = 0.005;
 FreeControls.prototype.orbitMouseSpeed = 0.005;
-FreeControls.prototype.panTouchSpeed = 0.002;
+FreeControls.prototype.panTouchSpeed = 1;
 FreeControls.prototype.orbitTouchSpeed = 0.005;
 FreeControls.prototype.zoomTouchSpeed = 0.005;
 FreeControls.prototype.rotationAccelSpeed = 1;
