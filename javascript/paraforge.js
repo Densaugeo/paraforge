@@ -150,6 +150,8 @@ export class Paraforge extends EventTarget {
     if(contents instanceof ArrayBuffer) contents_ = contents
     if(typeof contents === 'string') {
       const res = await fetch(contents, { cache: 'no-cache' })
+      if(!res.ok) throw new Error(`Unable to download file "${contents}": ` +
+        `HTTP code ${res.status}`)
       contents_ = await res.arrayBuffer()
     }
     
