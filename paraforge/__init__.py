@@ -37,6 +37,7 @@ for code, name in [
     (16, 'NotInitialized'),
     (17, 'SizeOutOfBounds'),
     (18, 'UnicodeError'),
+    (19, 'VertexOutOfBounds'),
 ]:
     paraforge_errors.append(type(name, (ParaforgeError, ), { 'code': code }))
 
@@ -157,12 +158,13 @@ class Material:
 
 class Geometry:
     def Cube() -> 'Geometry':
-        result = Geometry()
-        result._handle = new_geometry_cube()
-        return result
+        return Geometry(new_geometry_cube())
     
     @property
     def handle(self): return self._handle
+    
+    def __init__(self, handle: int | None = None):
+        self._handle = wasm_call('geometry_new') if handle is None else handle
     
     def t(self, x: int | float, y: int | float, z: int | float) -> 'Geometry':
         return self.translate(x, y, z)
@@ -180,14 +182,50 @@ class Geometry:
         geometry_scale(self._handle, float(x), float(y), float(z))
         return self
     
+    def select_vertices(self, x1: int | float, y1: int | float,
+    z1: int | float, x2: int | float, y2: int | float, z2: int | float,
+    ) -> 'Geometry':
+        # Not at all sure that the layer of separate functions for things like
+        # geometry_select_triangles() is really necessary
+        wasm_call('geometry_select_vertices', self._handle,
+            float(x1), float(y1), float(z1), float(x2), float(y2), float(z2))
+        return self
+    
     def select_triangles(self, x1: int | float, y1: int | float,
-    z1: int | float, x2: int | float, y2: int | float, z2: int | float):
+    z1: int | float, x2: int | float, y2: int | float, z2: int | float,
+    ) -> 'Geometry':
         geometry_select_triangles(self._handle, float(x1), float(y1), float(z1),
             float(x2), float(y2), float(z2))
         return self
     
-    def delete_triangles(self):
+    def create_vertex(self, x: int | float, y: int | float, z: int | float,
+    ) -> 'Geometry':
+        wasm_call('geometry_create_vertex', self._handle,
+            float(x), float(y), float(z))
+        return self
+    
+    def delete_vertex(self, vertex: int) -> 'Geometry':
+        wasm_call('geometry_delete_vertex', self._handle, vertex)
+        return self
+    
+    def delete_vertices(self) -> 'Geometry':
+        wasm_call('geometry_delete_vertices', self._handle)
+        return self
+    
+    def create_triangle(self, a: int, b: int, c: int) -> 'Geometry':
+        wasm_call('geometry_create_triangle', self._handle, a, b, c)
+        return self
+    
+    def delete_triangle(self, triangle: int) -> 'Geometry':
+        wasm_call('geometry_delete_triangle', self._handle, triangle)
+        return self
+    
+    def delete_triangles(self) -> 'Geometry':
         geometry_delete_triangles(self._handle)
+        return self
+    
+    def delete_stray_vertices(self) -> 'Geometry':
+        wasm_call('geometry_delete_stray_vertices', self._handle)
         return self
     
     def pack(self) -> PackedGeometry:
@@ -212,7 +250,7 @@ def write_string(handle: int, string: str):
 def wasm_call(function: str, *args):
     if micropython:
         # paraforge.wasm functions return i64...but micropython.wasm offers no
-        # means to transfer an i64 across it's FFI boundary. So the JS call
+        # means to transfer an i64 across its FFI boundary. So the JS call
         # actually returns an f64. All the paraforge.wasm functions called by
         # this library return values low enough to fit in the 53 integer bits
         # available in an f64
@@ -264,7 +302,7 @@ def add_primitive_to_mesh(mesh: int, packed_geometry: int, material: int,
     return wasm_call('add_primitive_to_mesh', mesh, packed_geometry, material)
 
 def new_geometry_cube() -> int:
-    return wasm_call('new_geometry_cube')
+    return wasm_call('geometry_cube')
 
 def geometry_translate(handle: int, x: float, y: float, z: float):
     return wasm_call('geometry_translate', handle, x, y, z)

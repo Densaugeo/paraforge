@@ -115,6 +115,7 @@ pub enum ErrorCode {
   NotInitialized = 16,
   SizeOutOfBounds = 17,
   UnicodeError = 18,
+  VertexOutOfBounds = 19,
 }
 
 // Any value type T used inside an FFIResult should implement FFIValue, but
@@ -260,6 +261,10 @@ impl Geometry {
     }
   }
   
+  pub fn create_vertex(&mut self, vertex: V3<f64>) {
+    self.vertices.push(vertex);
+  }
+  
   /// Automatically deletes affected triangles
   pub fn delete_vertex(&mut self, vertex: u32) {
     // Swap remove to avoid having to shift vertices
@@ -296,6 +301,18 @@ impl Geometry {
     }
   }
   
+  pub fn create_triangle(&mut self, triangle: [u32; 3]) -> FFIResult<()> {
+    for vertex in triangle {
+      if vertex >= self.vertices.len() as u32 {
+        return Err(ErrorCode::VertexOutOfBounds)
+      }
+    }
+    
+    self.triangles.push(triangle);
+    
+    Ok(())
+  }
+  
   pub fn delete_triangle(&mut self, triangle: u32) {
     self.triangles.swap_remove(triangle as usize);
     self.selection.drain(..);
@@ -326,6 +343,15 @@ impl Geometry {
       if vertex_used {
         self.delete_vertex(vertex as u32);
       }
+    }
+  }
+  
+  pub fn new() -> Self {
+    Self {
+      vertices: Vec::new(),
+      triangles: Vec::new(),
+      selection: Vec::new(),
+      selection_type: SelectionType::VERTICES,
     }
   }
   
@@ -1260,7 +1286,14 @@ fn add_primitive_to_mesh(mesh: usize, packed_geometry: usize, material: usize)
 }
 
 #[ffi]
-fn new_geometry_cube() -> FFIResult<usize> {
+fn geometry_new() -> FFIResult<usize> {
+  let mut geometries = lock(&GEOMETRIES)?;
+  geometries.push(Geometry::new());
+  return Ok(geometries.len() - 1);
+}
+
+#[ffi]
+fn geometry_cube() -> FFIResult<usize> {
   let mut geometries = lock(&GEOMETRIES)?;
   geometries.push(Geometry::cube());
   return Ok(geometries.len() - 1);
@@ -1287,6 +1320,17 @@ fn geometry_scale(handle: usize, x: f64, y: f64, z: f64) -> FFIResult<()> {
 }
 
 #[ffi]
+fn geometry_select_vertices(handle: usize, x1: f64, y1: f64, z1: f64, x2: f64,
+y2: f64, z2: f64) -> FFIResult<()> {
+  let mut geometries = lock(&GEOMETRIES)?;
+  if handle >= geometries.len() { return Err(ErrorCode::HandleOutOfBounds) };
+  
+  geometries[handle].select_vertices(V3::new(x1, y1, z1), V3::new(x2, y2, z2));
+  
+  Ok(())
+}
+
+#[ffi]
 fn geometry_select_triangles(handle: usize, x1: f64, y1: f64, z1: f64, x2: f64,
 y2: f64, z2: f64) -> FFIResult<()> {
   let mut geometries = lock(&GEOMETRIES)?;
@@ -1298,11 +1342,73 @@ y2: f64, z2: f64) -> FFIResult<()> {
 }
 
 #[ffi]
+fn geometry_create_vertex(handle: usize, x: f64, y: f64, z: f64,
+) -> FFIResult<()> {
+  let mut geometries = lock(&GEOMETRIES)?;
+  if handle >= geometries.len() { return Err(ErrorCode::HandleOutOfBounds) };
+  
+  geometries[handle].create_vertex(V3::new(x, y, z));
+  
+  Ok(())
+}
+
+#[ffi]
+fn geometry_delete_vertex(handle: usize, vertex: u32) -> FFIResult<()> {
+  let mut geometries = lock(&GEOMETRIES)?;
+  if handle >= geometries.len() { return Err(ErrorCode::HandleOutOfBounds) };
+  
+  geometries[handle].delete_vertex(vertex);
+  
+  Ok(())
+}
+
+#[ffi]
+fn geometry_delete_vertices(handle: usize) -> FFIResult<()> {
+  let mut geometries = lock(&GEOMETRIES)?;
+  if handle >= geometries.len() { return Err(ErrorCode::HandleOutOfBounds) };
+  
+  geometries[handle].delete_vertices();
+  
+  Ok(())
+}
+
+#[ffi]
+fn geometry_create_triangle(handle: usize, a: u32, b: u32, c: u32,
+) -> FFIResult<()> {
+  let mut geometries = lock(&GEOMETRIES)?;
+  if handle >= geometries.len() { return Err(ErrorCode::HandleOutOfBounds) };
+  
+  geometries[handle].create_triangle([a, b, c])?;
+  
+  Ok(())
+}
+
+#[ffi]
+fn geometry_delete_triangle(handle: usize, triangle: u32) -> FFIResult<()> {
+  let mut geometries = lock(&GEOMETRIES)?;
+  if handle >= geometries.len() { return Err(ErrorCode::HandleOutOfBounds) };
+  
+  geometries[handle].delete_triangle(triangle);
+  
+  Ok(())
+}
+
+#[ffi]
 fn geometry_delete_triangles(handle: usize) -> FFIResult<()> {
   let mut geometries = lock(&GEOMETRIES)?;
   if handle >= geometries.len() { return Err(ErrorCode::HandleOutOfBounds) };
   
   geometries[handle].delete_triangles();
+  
+  Ok(())
+}
+
+#[ffi]
+fn geometry_delete_stray_vertices(handle: usize) -> FFIResult<()> {
+  let mut geometries = lock(&GEOMETRIES)?;
+  if handle >= geometries.len() { return Err(ErrorCode::HandleOutOfBounds) };
+  
+  geometries[handle].delete_stray_vertices();
   
   Ok(())
 }
