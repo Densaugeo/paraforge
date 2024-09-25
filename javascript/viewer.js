@@ -35,10 +35,6 @@ export class ParaforgeViewer extends HTMLElement {
   constructor() {
     super()
     
-    // Default values for custom attributes
-    if(this.width  == null) this.width  = 580
-    if(this.height == null) this.height = 360
-    
     /////////////////
     // THREE Setup //
     /////////////////
@@ -202,14 +198,13 @@ export class ParaforgeViewer extends HTMLElement {
   async connectedCallback() {
     this.render()
     
-    // Custom attributes set in HTML must be explicitly applied
-    this._apply_dimensions()
-    
     this.addEventListener('keydown', e => {
       const slot = this.keyCodesToSlots[e.keyCode]
       if(!e.altKey && !e.ctrlKey && !e.shiftKey && slot) slot.click()
     })
     
+    this._apply_dimensions()
+    new ResizeObserver(() => this._apply_dimensions()).observe(this)
     document.addEventListener('fullscreenchange', () => {
       this.fs_command.enabled = document.fullscreenElement === this
       this._apply_dimensions()
@@ -223,31 +218,23 @@ export class ParaforgeViewer extends HTMLElement {
     })
   }
   
-  get width( ) { return this.getAttribute('width'   ) }
-  set width(v) { return this.setAttribute('width', v) }
-  
-  get height( ) { return this.getAttribute('height'   ) }
-  set height(v) { return this.setAttribute('height', v) }
-  
   get generator( ) { return this.getAttribute('generator'   ) }
   set generator(v) { return this.setAttribute('generator', v) }
   
   _apply_dimensions() {
     const width = this.fs_command.enabled ? window.innerWidth :
-      parseInt(this.width)
+      parseInt(this.offsetWidth)
     const height = this.fs_command.enabled ? window.innerHeight :
-      parseInt(this.height)
+      parseInt(this.offsetHeight)
     
     this.camera.aspect = (width - 36)/height
     this.renderer.setSize(width - 36, height)
-    this.style.width = width + 'px'
-    this.style.height = height + 'px'
     this.camera.updateProjectionMatrix()
     this.renderNeeded = true
   }
   
   static get observedAttributes() {
-    return ['width', 'height', 'generator']
+    return ['generator']
   }
   
   /**
@@ -256,7 +243,6 @@ export class ParaforgeViewer extends HTMLElement {
    * @param {string} new_value
    */
   attributeChangedCallback(name, _old_value, new_value) {
-    if(name === 'width' || name === 'height') this._apply_dimensions()
     if(name === 'generator') this._apply_generator(new_value)
   }
   
