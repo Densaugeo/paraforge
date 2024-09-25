@@ -28,7 +28,7 @@ const paraforge_class_instance = new paraforge.Paraforge(1)
 await paraforge_class_instance.init()
 await paraforge_class_instance.add_file('/first_model.py',
   '/examples/first_model.pf.py')
-await paraforge_class_instance.gen('first_model', 'first_model', [], {})
+await paraforge_class_instance.execute('first_model', 'first_model', [], {})
 const actual_glb = await paraforge_class_instance.serialize()
 
 const res = await fetch('/first_model.glb', { cache: 'reload' })

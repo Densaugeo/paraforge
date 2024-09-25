@@ -162,6 +162,18 @@ export class Paraforge extends EventTarget {
   }
   
   /**
+   * Check if a file exists in the virtual file system used by the MicroPython
+   * VM
+   * 
+   * @param path {string}
+   */
+  async check_file_exists(path) {
+    return await this._thread_call('check_file_exists', {
+      path
+    })
+  }
+  
+  /**
    * Evaluate arbitrary Python inside the MicroPython VM. Intended for
    * debugging. VM does not have access to any outside resources except the Rust
    * WebAssembly module
@@ -173,7 +185,9 @@ export class Paraforge extends EventTarget {
   }
   
   /**
-   * Generate a model
+   * Execute a model generator. Model generator must be loaded with .add_file()
+   * first, and the result must be retrieved later with .serialize(). For simple
+   * use cases, using the convenience function .gen() instead is recommended.
    * 
    * @param script_name {string} Name of Python module to import
    * @param generator {string} Name of generator function to call. Do not
@@ -181,8 +195,8 @@ export class Paraforge extends EventTarget {
    * @param python_args {Array<any>} Arguments to pass to generator
    * @param python_kwargs {Object} Keyword arguments to pass to generator
    */
-  async gen(script_name, generator, python_args, python_kwargs) {
-    return await this._thread_call('gen', {
+  async execute(script_name, generator, python_args=[], python_kwargs={}) {
+    return await this._thread_call('execute', {
       script_name,
       generator,
       python_args,
@@ -197,6 +211,36 @@ export class Paraforge extends EventTarget {
    */
   async serialize() {
     return await this._thread_call('serialize', {})
+  }
+  
+  /**
+   * Generate a model. Automatically loads the specified script first. For
+   * use cases where more control is needed, the lower-level function .execute()
+   * is recommended.
+   * 
+   * @param script_url {string} URL of Python module to import
+   * @param generator {string} Name of generator function to call. Do not
+   *   include gen_ prefix
+   * @param python_args {Array<any>} Arguments to pass to generator
+   * @param python_kwargs {Object} Keyword arguments to pass to generator
+   */
+  async gen(script_url, generator, python_args=[], python_kwargs={}) {
+    const script_filename = script_url.split('/').slice(-1)[0]
+    if(script_filename.slice(-3) !== '.py') {
+      throw new Error('Paraforge script filenames must end in .py')
+    }
+    
+    const module_name = script_filename.slice(0, -3)
+    if(module_name.includes('.')) {
+      throw new Error('Paraforge script filenames must have exactly one period')
+    }
+    
+    if(!await this.check_file_exists('/' + script_filename)) {
+      await this.add_file('/' + script_filename, script_url)
+    }
+    
+    await this.execute(module_name, generator, python_args, python_kwargs)
+    return await this.serialize()
   }
 }
 

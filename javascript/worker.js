@@ -126,6 +126,11 @@ self.add_file = args => {
   VFS[path] = new Uint8Array(contents)
 }
 
+self.check_file_exists = args => {
+  const { path } = args
+  return path in VFS
+}
+
 /////////////////////////////
 // Rust WebAssembly Module //
 /////////////////////////////
@@ -531,7 +536,7 @@ self.python = async args => {
   }
 }
 
-self.gen = args => {
+self.execute = args => {
   const { script_name, generator, python_args, python_kwargs } = args
   
   const passthrough = python_args
@@ -539,9 +544,14 @@ self.gen = args => {
     passthrough.push(`${key}=${python_kwargs[key]}`)
   })
   
+  // Trying to escape the module name is just too complicated, so write it in a
+  // file and then have the uPython side read it
+  VFS['/paraforge/string_transfer'] = UTF8Encoder.encode(script_name)
+  
   return python({ code: `
-    import ${script_name}
-    ${script_name}.gen_${generator}(${passthrough.join(', ')})
+    with open('/paraforge/string_transfer') as f:
+        module = __import__(f.read())
+    module.gen_${generator}(${passthrough.join(', ')})
   ` })
 }
 

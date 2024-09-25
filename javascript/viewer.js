@@ -260,13 +260,28 @@ export class ParaforgeViewer extends HTMLElement {
     if(name === 'generator') this._apply_generator(new_value)
   }
   
-  async init() {
-    this.paraforge = new paraforge.Paraforge(0)
+  /**
+   * @param verbosity {number} Defaults to 0 (no logging). Higher value = more
+   *   logging
+   */
+  async init(verbosity=0) {
+    this.paraforge = new paraforge.Paraforge(verbosity)
     await this.paraforge.init()
   }
   
-  async update_scene() {
-    const glb = await this.paraforge.serialize()
+  /**
+   * Generate a model and update the 3D scene with the result
+   * 
+   * @param script_url {string} URL of Python module to import
+   * @param generator {string} Name of generator function to call. Do not
+   *   include gen_ prefix
+   * @param python_args {Array<any>} Arguments to pass to generator
+   * @param python_kwargs {Object} Keyword arguments to pass to generator
+   */
+  async gen(script_url, generator, python_args=[], python_kwargs={}) {
+    const glb = await this.paraforge.gen(script_url, generator, python_args,
+      python_kwargs)
+    
     this.gltf_loader.parse(glb.buffer, '', gltf => {
       this.generated_meshes.remove(this.generated_model)
       this.generated_meshes.add(this.generated_model = gltf.scene)
