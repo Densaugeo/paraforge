@@ -173,7 +173,9 @@ export class DenShaderUI extends HTMLElement {
       } else {
         this.currentShader[uniform_name] = e.target.value
       }
+      
       this.currentShader.updateUniforms()
+      shaderChanger.emit('update-uniforms')
     })
     
     // Disable all keyboard shortcuts inside textboxes, and arrow keys inside

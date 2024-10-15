@@ -679,7 +679,7 @@ const proxy_convert_mp_to_js = pointer => {
       
       // Not sure why this one is freed when the others aren't, but it's in the
       // original emscaripten wrappers. Maybe the exception is assumed to be
-      // consumed by the host, so upython doesn't grabage collect it?
+      // consumed by the host, so upython doesn't garbage collect it?
       mp_instance.exports.free(pointer)
       
       throw new PythonError(...string.split('\x04'))

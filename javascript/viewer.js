@@ -97,6 +97,8 @@ export class ParaforgeViewer extends HTMLElement {
     
     ui_panels.shaderChanger.scene = this.generated_meshes
     ui_panels.shaderChanger.on('change', () => this.renderNeeded = true)
+    ui_panels.shaderChanger.on('update-uniforms',
+      () => this.renderNeeded = true)
     
     ////////////////////////
     // Internal DOM Setup //

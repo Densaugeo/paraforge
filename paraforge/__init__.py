@@ -62,7 +62,7 @@ class Node:
         
         self._handle = add_node_to_scene(0, self._name)
     
-    def add_mesh(self, name: str = ''):
+    def add_mesh(self, name: str = '') -> Mesh:
         return Mesh(self, name)
 
 
