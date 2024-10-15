@@ -228,6 +228,12 @@ class Geometry:
         wasm_call('geometry_delete_stray_vertices', self._handle)
         return self
     
+    def extrude(self, x: int | float, y: int | float, z: int | float
+    ) -> 'Geometry':
+        wasm_call('geometry_extrude', self._handle, float(x), float(y),
+            float(z))
+        return self
+    
     def pack(self) -> PackedGeometry:
         result = PackedGeometry()
         result._handle = geometry_pack(self._handle)

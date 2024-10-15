@@ -1,4 +1,4 @@
-use std::sync::{Mutex, MutexGuard};
+use std::{collections::HashMap, sync::{Mutex, MutexGuard}};
 
 pub use nalgebra::Vector3 as V3;
 
@@ -134,6 +134,7 @@ type FFIResult<T> = Result<T, ErrorCode>;
 // Non-GLTF Data Structures //
 //////////////////////////////
 
+#[derive(PartialEq)]
 pub enum SelectionType {
   VERTICES,
   TRIANGLES,
@@ -320,7 +321,7 @@ impl Geometry {
   
   pub fn delete_triangles(&mut self) {
     // Triangles must be processed in reverse order, because deletion of lower-
-    // index vertices can change the index of higher-index vertices
+    // index triangles can change the index of higher-index triangles
     self.selection.sort_unstable();
     self.selection.reverse();
     
@@ -343,6 +344,88 @@ impl Geometry {
       if vertex_used {
         self.delete_vertex(vertex as u32);
       }
+    }
+  }
+  
+  pub fn extrude(&mut self, displacement: V3<f64>) {
+    // Maps indices of original vertices to their extruded counterparts
+    let mut vtx_mapping = HashMap::new();
+    
+    // Key is a (u32, u32) representing vertices of an edge, value is a bool
+    // representing whether the edge is should be extruded into new triangles
+    // (generally this is true when the edge is part of exactly one in-selection
+    // triangle)
+    let mut edges = HashMap::new();
+    
+    let all_selected = self.selection.len() == match self.selection_type {
+      SelectionType::VERTICES => self.vertices.len(),
+      SelectionType::TRIANGLES => self.triangles.len(),
+    };
+    
+    // Note: When selecting by triangles, there can be duplicate vertices in the
+    // selection
+    let vtcs_in_selection: Box<dyn Iterator<Item = u32>> =
+    match self.selection_type {
+      SelectionType::VERTICES => Box::new(self.selection.iter().copied()),
+      SelectionType::TRIANGLES => Box::new(self.selection.iter().flat_map(
+        |tri_index| self.triangles[*tri_index as usize]
+      )),
+    };
+    
+    // Copy selected vertices
+    for vtx_index in vtcs_in_selection {
+      // Repeat vertices are only possible here if using triangle selection
+      if self.selection_type == SelectionType::TRIANGLES {
+        if vtx_mapping.contains_key(&vtx_index) { continue }
+      }
+      
+      vtx_mapping.insert(vtx_index, self.vertices.len() as u32);
+      let vtx = self.vertices[vtx_index as usize];
+      self.vertices.push(vtx + displacement);
+    }
+    
+    let candidate_tris: Box<dyn Iterator<Item = u32>> =
+    match self.selection_type {
+      SelectionType::VERTICES => Box::new(0u32..self.triangles.len() as u32),
+      SelectionType::TRIANGLES => Box::new(self.selection.iter().copied()),
+    };
+    
+    // Move/copy selected tris (tris are only copied if the entire geometry was
+    // selected)
+    for tri_index in candidate_tris {
+      let tri = &mut self.triangles[tri_index as usize];
+      
+      let Some(&t0) = vtx_mapping.get(&tri[0]) else { continue };
+      let Some(&t1) = vtx_mapping.get(&tri[1]) else { continue };
+      let Some(&t2) = vtx_mapping.get(&tri[2]) else { continue };
+      
+      for i in 0..3 {
+        let (e0, e1) = (tri[i], tri[(i + 1) % 3]);
+        
+        if edges.contains_key(&(e0, e1)) {
+          edges.entry((e0, e1)).and_modify(|entry| *entry = false);
+        } else if edges.contains_key(&(e1, e0)) {
+          edges.entry((e1, e0)).and_modify(|entry| *entry = false);
+        } else {
+          edges.insert((e0, e1), true);
+        }
+      }
+      
+      if all_selected {
+        (tri[0], tri[1]) = (tri[1], tri[0]);
+        self.triangles.push([t0, t1, t2]);
+      } else {
+        (tri[0], tri[1], tri[2]) = (t0, t1, t2);
+      }
+    }
+    
+    // Extrude true edges into new tris
+    for (key, value) in edges {
+      if value == false { continue }
+      
+      self.triangles.push([key.0, key.1, *vtx_mapping.get(&key.1).unwrap()]);
+      self.triangles.push([key.0, *vtx_mapping.get(&key.1).unwrap(),
+        *vtx_mapping.get(&key.0).unwrap()]);
     }
   }
   
@@ -1409,6 +1492,16 @@ fn geometry_delete_stray_vertices(handle: usize) -> FFIResult<()> {
   if handle >= geometries.len() { return Err(ErrorCode::HandleOutOfBounds) };
   
   geometries[handle].delete_stray_vertices();
+  
+  Ok(())
+}
+
+#[ffi]
+fn geometry_extrude(handle: usize, x: f64, y: f64, z: f64) -> FFIResult<()> {
+  let mut geometries = lock(&GEOMETRIES)?;
+  if handle >= geometries.len() { return Err(ErrorCode::HandleOutOfBounds) };
+  
+  geometries[handle].extrude(V3::new(x, y, z));
   
   Ok(())
 }
