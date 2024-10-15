@@ -16,7 +16,7 @@ def setup_module():
 
 def test_demo():
     result = subprocess.run([
-        'python', '-m', 'paraforge', '../examples/first_model.pf.py',
+        'python', '-m', 'paraforge', '../examples/first_model.py',
         'first_model',
     ], capture_output=True)
     

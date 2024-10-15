@@ -19,7 +19,7 @@ Evaluation of a Python-Rust architecture for a parametric modeling project.
     .add_\*, methods that create a new object should be named .new_\*
 - Basic geometries
   * Plane
-  * Couple spheres
+  * Some spheres
   * Cylinder
   * Circle
   * Cone
@@ -38,6 +38,8 @@ Evaluation of a Python-Rust architecture for a parametric modeling project.
 - Core functions
   * Rotate vtcs
   * Add existing node, mesh, meshprimitive
+  * Nodes should not always be descendants of scene 0 - necessary to support
+    import generators
 
 ## License
 
