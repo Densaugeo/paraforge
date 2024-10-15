@@ -35,6 +35,9 @@ Evaluation of a Python-Rust architecture for a parametric modeling project.
   * Tri count
   * Get tri
   * Set tri
+- Core functions
+  * Rotate vtcs
+  * Add existing node, mesh, meshprimitive
 
 ## License
 
