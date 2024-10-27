@@ -34,6 +34,7 @@ serde = { version = "1.0.189", features = ["derive"] }
 serde_json = "1.0.107"
 serde_tuple = "0.5.0"
 serde_repr = "0.1.17"
+gltf-json = { version = "1.4.1", features = ["names"] }
 base64 = "0.21.5"
 nalgebra = "0.32.4"
 paraforge-macros = { path = "macros" }

@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::{Mutex, MutexGuard}};
+use std::{collections::{BTreeMap, HashMap}, sync::{Mutex, MutexGuard}};
 
 pub use nalgebra::Vector3 as V3;
 
@@ -15,8 +15,10 @@ static GEOMETRIES: Mutex<Vec<Geometry>> = Mutex::new(Vec::new());
 static PACKED_GEOMETRIES: Mutex<Vec<PackedGeometry>> = Mutex::new(Vec::new());
 static STRING_TRANSPORT: Mutex<[Vec<u8>; 4]> = Mutex::new([vec![], vec![],
   vec![], vec![]]);
-static GLTF_SOURCE: Mutex<Option<GLTF>> = Mutex::new(None);
-static GLTF_OUTPUT: Mutex<Vec<u8>> = Mutex::new(Vec::new());
+static GLB_JSON: Mutex<Option<gltf_json::Root>> = Mutex::new(None);
+static GLB_BIN: Mutex<Vec<u8>> = Mutex::new(Vec::new());
+static GLB_OUTPUT: Mutex<Vec<u8>> = Mutex::new(Vec::new());
+
 
 fn lock<'a, T>(mutex: &'a Mutex<T>) -> Result<MutexGuard<'a, T>, ErrorCode> {
   match mutex.lock() {
@@ -187,11 +189,11 @@ impl Geometry {
     })
   }
   
-  pub fn triangles_raw_component_type(&self) -> ComponentType {
+  pub fn triangles_raw_component_type(&self) -> gltf_json::accessor::ComponentType {
     if self.vertices.len() < 0x10000 {
-      ComponentType::UnsignedShort
+      gltf_json::accessor::ComponentType::U16
     } else {
-      ComponentType::UnsignedInt
+      gltf_json::accessor::ComponentType::U32
     }
   }
   
@@ -483,7 +485,8 @@ impl Geometry {
     }
   }
   
-  pub fn pack(&self, gltf: &mut GLTF) -> PackedGeometry {
+  pub fn pack(&self, glb_bin: &mut Vec<u8>, glb_json: &mut gltf_json::Root)
+  -> PackedGeometry {
     // Calculate vertex bounds. The vertex bounds are f32 because that is the
     // same precision as GLTF vertices
     let mut min = V3::repeat(f32::MAX);
@@ -494,23 +497,29 @@ impl Geometry {
       max = max.sup(&vertex);
     }
     
-    gltf.append_to_glb_bin(self.vertices_raw(), Type::VEC3,
-      ComponentType::Float);
+    append_to_glb_bin(glb_bin, glb_json, self.vertices_raw(),
+      gltf_json::accessor::Type::Vec3, gltf_json::accessor::ComponentType::F32);
     // Can .unwrap() because the previous .append_to_glb_bin() call guarantees
     // .accessors/min/max will be populated
-    gltf.accessors.last_mut().unwrap().min.extend_from_slice(min.as_slice());
-    gltf.accessors.last_mut().unwrap().max.extend_from_slice(max.as_slice());
-    gltf.buffer_views.last_mut().unwrap().target = Some(
-      Target::ArrayBuffer);
+    glb_json.accessors.last_mut().unwrap().min = Some(
+      gltf_json::Value::from(min.as_slice()));
+    glb_json.accessors.last_mut().unwrap().max = Some(
+      gltf_json::Value::from(max.as_slice()));
+    glb_json.buffer_views.last_mut().unwrap().target = Some(
+      gltf_json::validation::Checked::Valid(
+      gltf_json::buffer::Target::ArrayBuffer));
     
-    gltf.append_to_glb_bin(self.triangles_raw(), Type::SCALAR,
-      self.triangles_raw_component_type());
-    gltf.buffer_views.last_mut().unwrap().target = Some(
-      Target::ElementArrayBuffer);
+    append_to_glb_bin(glb_bin, glb_json, self.triangles_raw(),
+      gltf_json::accessor::Type::Scalar, self.triangles_raw_component_type());
+    // Can .unwrap() because the previous .append_to_glb_bin() call guarantees
+    // .accessors/min/max will be populated
+    glb_json.buffer_views.last_mut().unwrap().target = Some(
+      gltf_json::validation::Checked::Valid(
+      gltf_json::buffer::Target::ElementArrayBuffer));
     
     return PackedGeometry {
-      vertex_buffer: gltf.accessors.len() as u32 - 2,
-      triangle_buffer: gltf.accessors.len() as u32 - 1,
+      vertex_buffer: glb_json.accessors.len() as u32 - 2,
+      triangle_buffer: glb_json.accessors.len() as u32 - 1,
     }
   }
 }
@@ -520,168 +529,50 @@ pub struct PackedGeometry {
   triangle_buffer: u32,
 }
 
-/////////////////////////
-// GLTF Data Structure //
-/////////////////////////
+/////////////////////////////////////////////////
+// Crater Where GLTF Data Structure Used To Be //
+/////////////////////////////////////////////////
 
-#[derive(Clone, serde::Serialize)]
-pub struct Asset {
-  #[serde(skip_serializing_if = "String::is_empty")]
-  pub copyright: String,
-  
-  #[serde(skip_serializing_if = "String::is_empty")]
-  pub generator: String,
-  
-  // Don't skip if empty...this field is mandatory per GLTF spec!
-  pub version: String,
-  
-  #[serde(skip_serializing_if = "String::is_empty")]
-  #[serde(rename = "minVersion")]
-  pub min_version: String,
-  
-  // pub extensions: ??,
-  
-  // In the .gltf spec, but will have to wait for later
-  //pub extra: ??,
-}
-
-impl Asset {
-  pub fn new() -> Self {
-    Self {
-      copyright: String::from(""),
-      generator: String::from("emg v0.1.0"),
-      version: String::from("2.0"),
-      min_version: String::from("2.0"),
-    }
+fn append_to_glb_bin(glb_bin: &mut Vec<u8>, glb_json: &mut gltf_json::Root,
+buffer: impl IntoIterator, type_: gltf_json::accessor::Type,
+component_type: gltf_json::accessor::ComponentType) {
+  let mut bytes = 0;
+  for value in buffer.into_iter() {
+    let sliced = unsafe { any_as_u8_slice(&value) };
+    glb_bin.extend_from_slice(sliced);
+    bytes += sliced.len() as u64;
   }
-}
-
-#[derive(Clone, serde::Serialize)]
-pub struct GLTF {
-  // Don't skip if empty...this field is mandatory per GLTF spec!
-  pub asset: Asset,
+  glb_json.buffers[0].byte_length.0 += bytes;
   
-  #[serde(skip_serializing_if = "Option::is_none")]
-  pub scene: Option<u32>,
+  let buffer_view = glb_json.push(gltf_json::buffer::View {
+    name: None,
+    buffer: gltf_json::Index::new(0),
+    byte_length: gltf_json::validation::USize64(bytes),
+    byte_offset: Some(gltf_json::validation::USize64(
+      (glb_bin.len() as u64) - bytes)),
+    byte_stride: None,
+    target: Some(gltf_json::validation::Checked::Valid(
+      gltf_json::buffer::Target::ArrayBuffer)),
+    extensions: None,
+    extras: gltf_json::extras::Void::default(),
+  });
   
-  #[serde(skip_serializing_if = "Vec::is_empty")]
-  pub scenes: Vec<Scene>,
-  
-  #[serde(skip_serializing_if = "Vec::is_empty")]
-  pub nodes: Vec<Node>,
-  
-  #[serde(skip_serializing_if = "Vec::is_empty")]
-  pub materials: Vec<Material>,
-  
-  #[serde(skip_serializing_if = "Vec::is_empty")]
-  pub meshes: Vec<Mesh>,
-  
-  #[serde(skip_serializing_if = "Vec::is_empty")]
-  pub accessors: Vec<Accessor>,
-  
-  #[serde(rename = "bufferViews")]
-  #[serde(skip_serializing_if = "Vec::is_empty")]
-  pub buffer_views: Vec<BufferView>,
-  
-  #[serde(skip_serializing_if = "Vec::is_empty")]
-  pub buffers: Vec<Buffer>,
-  
-  // TODO Not sure about the memory use effects of putting all GLB BIN data
-  // into one vector during model construction. Look into using a
-  // Vec<Vec<u8>> or similar when I have a suitable test setup
-  #[serde(skip_serializing)]
-  pub glb_bin: Vec<u8>,
-  
-  // In the .gltf spec, but will have to wait for later
-  /*pub animations: ??
-   *  pub asset: ??
-   *  pub extensionsUsed: ??
-   *  pub extensionsRequired: ??
-   *  pub cameras: ??
-   *  pub images: ??
-   *  pub samplers: ??
-   *  pub skins: ??
-   *  pub textures: ??
-   *  pub extensions: ??
-   *  pub extras: ??*/
-}
-
-impl GLTF {
-  pub fn new() -> Self {
-    let scene = Scene::new("A name for a scene");
-    
-    Self {
-      asset: Asset::new(),
-      nodes: Vec::new(),
-      materials: Vec::new(),
-      scene: Some(0),
-      scenes: vec![scene],
-      meshes: Vec::new(),
-      accessors: Vec::new(),
-      buffer_views: Vec::new(),
-      buffers: vec!(Buffer::new("")),
-      glb_bin: Vec::new(),
-    }
-  }
-  
-  pub fn append_to_glb_bin(&mut self, buffer: impl IntoIterator,
-  type_: Type, component_type: ComponentType) {
-    let mut bytes = 0;
-    for value in buffer.into_iter() {
-      let sliced = unsafe { any_as_u8_slice(&value) };
-      self.glb_bin.extend_from_slice(sliced);
-      bytes += sliced.len() as u32;
-    }
-    self.buffers[0].byte_length += bytes;
-    
-    let mut buffer_view = BufferView::new("");
-    buffer_view.buffer = 0;
-    buffer_view.byte_length = bytes;
-    buffer_view.byte_offset = (self.glb_bin.len() as u32) - bytes;
-    self.buffer_views.push(buffer_view);
-    
-    let mut accessor = Accessor::new("");
-    accessor.buffer_view = Some((self.buffer_views.len() - 1) as u32);
-    accessor.type_ = type_;
-    accessor.component_type = component_type;
-    accessor.count = bytes/type_.component_count()/component_type.byte_count();
-    self.accessors.push(accessor);
-  }
-  
-  /// Creates a new node and adds it to the specified scene. If unsure, use
-  /// scene 0
-  pub fn new_root_node<S: Into<String>>(&mut self, scene: u32, name: S) ->
-  *mut Node {
-    let index = self.nodes.len() as u32;
-    self.scenes[scene as usize].nodes.push(index);
-    self.nodes.push(Node::new(name));
-    self.nodes.last_mut().unwrap()
-  }
-  
-  /// Creates a new node and adds it to the specified node
-  pub fn new_node<S: Into<String>>(&mut self, node: u32, name: S) -> &mut Node {
-    let index = self.nodes.len() as u32;
-    self.nodes[node as usize].children.push(index);
-    self.nodes.push(Node::new(name));
-    self.nodes.last_mut().unwrap()
-  }
-  
-  /// Creates a new mesh and adds it to the specified node
-  pub fn new_mesh<S: Into<String>>(&mut self, node: u32, name: S) -> &mut Mesh {
-  let index = self.meshes.len() as u32;
-    self.nodes[node as usize].mesh = Some(index);
-    self.meshes.push(Mesh::new(name));
-    self.meshes.last_mut().unwrap()
-  }
-  
-  pub fn new_material<S: Into<String>>(&mut self, name: S) -> &mut Material {
-    self.materials.push(Material::new(name));
-    
-    // .unwrap() here doesn't unwrap .material, but instead unwraps the result
-    // of calling .as_mut(), and is permissible because .material is guaranteed
-    // to have a value after the previous line
-    self.materials.last_mut().unwrap()
-  }
+  glb_json.push(gltf_json::Accessor {
+    name: None,
+    buffer_view: Some(buffer_view),
+    byte_offset: None,
+    type_: gltf_json::validation::Checked::Valid(type_),
+    component_type: gltf_json::validation::Checked::Valid(
+      gltf_json::accessor::GenericComponentType(component_type)),
+    count: gltf_json::validation::USize64(
+      bytes/component_count(type_)/byte_count(component_type)),
+    min: None, // Overwritten shortly after by calling function
+    max: None, // Overwritten shortly after by calling function
+    normalized: false,
+    sparse: None,
+    extensions: None,
+    extras: gltf_json::extras::Void::default(),
+  });
 }
 
 // WARNING: Do not edit!
@@ -699,571 +590,26 @@ unsafe fn any_as_u8_slice<T: Sized>(p: &T) -> &[u8] {
   )
 }
 
-#[derive(Clone, serde::Serialize)]
-pub struct Scene {
-  #[serde(skip_serializing_if = "String::is_empty")]
-  pub name: String,
-  
-  #[serde(skip_serializing_if = "Vec::is_empty")]
-  pub nodes: Vec<u32>,
-  
-  //pub extensions: Vec<??>,
-  
-  // In the .gltf spec but not currently used:
-  //pub extras: Vec<A JSON-serializable struct>,
-}
-
-impl Scene {
-  pub fn new<S: Into<String>>(name: S) -> Self {
-    Self { name: name.into(), nodes: Vec::new() }
+fn component_count(type_: gltf_json::accessor::Type) -> u64 {
+  match type_ {
+    gltf_json::accessor::Type::Scalar =>  1,
+    gltf_json::accessor::Type::Vec2   =>  2,
+    gltf_json::accessor::Type::Vec3   =>  3,
+    gltf_json::accessor::Type::Vec4   =>  4,
+    gltf_json::accessor::Type::Mat2   =>  4,
+    gltf_json::accessor::Type::Mat3   =>  9,
+    gltf_json::accessor::Type::Mat4   => 16
   }
 }
 
-#[derive(Copy, Clone, PartialEq)]
-#[derive(serde_tuple::Serialize_tuple)]
-pub struct Translation {
-  pub x: f64,
-  pub y: f64,
-  pub z: f64,
-}
-
-impl Translation {
-  pub fn new() -> Self { Self { x: 0.0, y: 0.0, z: 0.0 } }
-  pub fn is_default(&self) -> bool { *self == Self::new() }
-}
-
-#[derive(Copy, Clone, PartialEq)]
-#[derive(serde_tuple::Serialize_tuple)]
-pub struct Rotation {
-  pub x: f64,
-  pub y: f64,
-  pub z: f64,
-  pub w: f64,
-}
-
-impl Rotation {
-  pub fn new() -> Self { Self { x: 0.0, y: 0.0, z: 0.0, w: 1.0 } }
-  pub fn is_default(&self) -> bool { *self == Self::new() }
-}
-
-#[derive(Copy, Clone, PartialEq)]
-#[derive(serde_tuple::Serialize_tuple)]
-pub struct Scale {
-  pub x: f64,
-  pub y: f64,
-  pub z: f64,
-}
-
-impl Scale {
-  pub fn new() -> Self { Self { x: 1.0, y: 1.0, z: 1.0 } }
-  pub fn is_default(&self) -> bool { *self == Self::new() }
-}
-
-#[derive(Clone, serde::Serialize)]
-pub struct Node {
-  #[serde(skip_serializing_if = "String::is_empty")]
-  pub name: String,
-  
-  #[serde(skip_serializing_if = "Option::is_none")]
-  pub mesh: Option<u32>,
-  
-  #[serde(rename = "translation")]
-  #[serde(skip_serializing_if = "Translation::is_default")]
-  pub t: Translation,
-  
-  #[serde(rename = "rotation")]
-  #[serde(skip_serializing_if = "Rotation::is_default")]
-  pub r: Rotation,
-  
-  #[serde(rename = "scale")]
-  #[serde(skip_serializing_if = "Scale::is_default")]
-  pub s: Scale,
-  
-  #[serde(skip_serializing_if = "Vec::is_empty")]
-  pub children: Vec<u32>,
-  
-  //pub mesh: ??,
-  //pub extensions: ??,
-  
-  // In the .gltf spec but will have to wait for now:
-  /*pub camera: ??,
-   *  pub skin: ??,
-   *  pub matrix: ??,
-   *  pub weights: ??,
-   *  pub extras: ??,*/
-}
-
-impl Node {
-  pub fn new<S: Into<String>>(name: S) -> Self {
-    Self {
-      name: name.into(),
-      mesh: None,
-      t: Translation::new(),
-      r: Rotation::new(),
-      s: Scale::new(),
-      children: Vec::new(),
-    }
-  }
-}
-
-#[derive(Copy, Clone, PartialEq, serde::Serialize)]
-pub enum AlphaMode {
-  OPAQUE,
-  MASK,
-  BLEND,
-}
-
-#[derive(Copy, Clone, PartialEq)]
-#[derive(serde_tuple::Serialize_tuple)]
-pub struct Color4 {
-  pub r: f64,
-  pub g: f64,
-  pub b: f64,
-  pub a: f64,
-}
-
-impl Color4 {
-  pub fn new() -> Self { Self { r: 1.0, g: 1.0, b: 1.0, a: 1.0 } }
-  pub fn is_default(&self) -> bool { *self == Self::new() }
-}
-
-#[derive(Copy, Clone, serde::Serialize)]
-pub struct PBRMetallicRoughness {
-  #[serde(rename = "baseColorFactor")]
-  #[serde(skip_serializing_if = "Color4::is_default")]
-  pub base_color_factor: Color4,
-  
-  #[serde(rename = "metallicFactor")]
-  #[serde(skip_serializing_if = "is_default_metallic_factor")]
-  pub metallic_factor: f64,
-  
-  #[serde(rename = "roughnessFactor")]
-  #[serde(skip_serializing_if = "is_default_roughness_factor")]
-  pub roughness_factor: f64,
-  
-  //pub extensions: ??,
-  
-  // In the .gltf spec but will have to wait for now:
-  /*pub extras: ??,
-   *  pub metallicRoughnessTexture: ??,
-   *  pub baseColorTexture: ??,
-   */
-}
-
-impl PBRMetallicRoughness {
-  pub fn new() -> Self {
-    Self {
-      base_color_factor: Color4::new(),
-      metallic_factor: 1.0,
-      roughness_factor: 1.0,
-    }
-  }
-}
-
-fn is_default_metallic_factor(value: &f64) -> bool {
-  *value == 1.0
-}
-
-fn is_default_roughness_factor(value: &f64) -> bool {
-  *value == 1.0
-}
-
-fn is_default_emissive_factor(value: &[f64; 3]) -> bool {
-  *value == [0.0, 0.0, 0.0]
-}
-
-fn is_default_alpha_mode(value: &AlphaMode) -> bool {
-  *value == AlphaMode::OPAQUE
-}
-
-fn is_default_alpha_cutoff(value: &f64) -> bool {
-  *value == 0.5
-}
-
-fn is_default_double_sided(value: &bool) -> bool {
-  *value == false
-}
-
-#[derive(Clone, serde::Serialize)]
-pub struct Material {
-  #[serde(skip_serializing_if = "String::is_empty")]
-  pub name: String,
-  
-  #[serde(rename = "emissiveFactor")]
-  #[serde(skip_serializing_if = "is_default_emissive_factor")]
-  pub emissive_factor: [f64; 3],
-  
-  #[serde(rename = "alphaMode")]
-  #[serde(skip_serializing_if = "is_default_alpha_mode")]
-  pub alpha_mode: AlphaMode,
-  
-  #[serde(rename = "alphaCutoff")]
-  #[serde(skip_serializing_if = "is_default_alpha_cutoff")]
-  pub alpha_cutoff: f64,
-  
-  #[serde(rename = "doubleSided")]
-  #[serde(skip_serializing_if = "is_default_double_sided")]
-  pub double_sided: bool,
-  
-  #[serde(rename = "pbrMetallicRoughness")]
-  // Not sure how to skip serializing when unused for this one
-  pub pbr_metallic_roughness: PBRMetallicRoughness,
-  
-  //pub extensions: ??,
-  
-  // In the .gltf spec but will have to wait for now:
-  /*pub extras: ??,
-   *  pub normalTexture: ??,
-   *  pub occlusionTexture: ??,
-   *  pub emissiveTexture: ??,*/
-}
-
-impl Material {
-  pub fn new<S: Into<String>>(name: S) -> Self {
-    Self {
-      name: name.into(),
-      emissive_factor: [0.0, 0.0, 0.0],
-      alpha_mode: AlphaMode::OPAQUE,
-      alpha_cutoff: 0.5,
-      double_sided: false,
-      pbr_metallic_roughness: PBRMetallicRoughness::new(),
-    }
-  }
-}
-
-// The fields here are in the spec in section 3.7 - Concepts / Geometry,
-// which took me a while to find
-#[derive(Copy, Clone, serde::Serialize)]
-pub struct Attributes {
-  #[serde(rename = "COLOR_0")]
-  #[serde(skip_serializing_if = "Option::is_none")]
-  pub color_0: Option<u32>,
-  
-  #[serde(rename = "JOINTS_0")]
-  #[serde(skip_serializing_if = "Option::is_none")]
-  pub joints_0: Option<u32>,
-  
-  #[serde(rename = "NORMAL")]
-  #[serde(skip_serializing_if = "Option::is_none")]
-  pub normal: Option<u32>,
-  
-  #[serde(rename = "POSITION")]
-  #[serde(skip_serializing_if = "Option::is_none")]
-  pub position: Option<u32>,
-  
-  #[serde(rename = "TANGENT")]
-  #[serde(skip_serializing_if = "Option::is_none")]
-  pub tangent: Option<u32>,
-  
-  #[serde(rename = "TEXCOORD_0")]
-  #[serde(skip_serializing_if = "Option::is_none")]
-  pub texcoord_0: Option<u32>,
-  
-  #[serde(rename = "TEXCOORD_1")]
-  #[serde(skip_serializing_if = "Option::is_none")]
-  pub texcoord_1: Option<u32>,
-  
-  #[serde(rename = "TEXCOORD_2")]
-  #[serde(skip_serializing_if = "Option::is_none")]
-  pub texcoord_2: Option<u32>,
-  
-  #[serde(rename = "TEXCOORD_3")]
-  #[serde(skip_serializing_if = "Option::is_none")]
-  pub texcoord_3: Option<u32>,
-  
-  #[serde(rename = "WEIGHTS_0")]
-  #[serde(skip_serializing_if = "Option::is_none")]
-  pub weights_0: Option<u32>,
-}
-
-impl Attributes {
-  pub fn new() -> Self {
-    Self {
-      color_0: None,
-      joints_0: None,
-      normal: None,
-      position: None,
-      tangent: None,
-      texcoord_0: None,
-      texcoord_1: None,
-      texcoord_2: None,
-      texcoord_3: None,
-      weights_0: None,
-    }
-  }
-}
-
-#[derive(Copy, Clone, PartialEq, serde_repr::Serialize_repr)]
-#[repr(u8)]
-pub enum Mode {
-  Points = 0,
-  Lines = 1,
-  LineLoop = 2,
-  LineStrip = 3,
-  Triangles = 4,
-  TriangleStrip = 5,
-  TriangleFan = 6,
-}
-
-fn is_default_mode(value: &Mode) -> bool {
-  *value == Mode::Triangles
-}
-
-#[derive(Copy, Clone, serde::Serialize)]
-pub struct MeshPrimitive {
-  pub attributes: Attributes,
-  
-  #[serde(skip_serializing_if = "Option::is_none")]
-  pub indices: Option<u32>,
-  
-  #[serde(skip_serializing_if = "Option::is_none")]
-  pub material: Option<u32>,
-  
-  #[serde(skip_serializing_if = "is_default_mode")]
-  pub mode: Mode, // Default is triangles
-  
-  //pub extensions: ??,
-  
-  // In the .gltf spec but will have to wait for now:
-  /*pub extras: ??,
-   *  pub targets: ??,*/
-}
-
-impl MeshPrimitive {
-  pub fn new() -> Self {
-    Self {
-      attributes: Attributes::new(),
-      indices: None,
-      material: None,
-      mode: Mode::Triangles,
-    }
-  }
-  
-  /// Set material index
-  pub fn material(&mut self, material: u32) -> &mut Self {
-    self.material = Some(material);
-    self
-  }
-}
-
-#[derive(Clone, serde::Serialize)]
-pub struct Mesh {
-  #[serde(skip_serializing_if = "String::is_empty")]
-  pub name: String,
-  
-  // No serialization filter, this is required per spec
-  pub primitives: Vec<MeshPrimitive>,
-  
-  #[serde(skip_serializing_if = "Vec::is_empty")]
-  pub weights: Vec<f64>,
-  
-  //pub extensions: ??,
-  
-  // In the .gltf spec but will have to wait for now:
-  /*pub extras: ??,*/
-}
-
-impl Mesh {
-  pub fn new<S: Into<String>>(name: S) -> Self {
-    Self {
-      name: name.into(),
-      primitives: Vec::new(),
-      weights: Vec::new(),
-    }
-  }
-  
-  pub fn copy_primitive(&mut self, primitive: MeshPrimitive) ->
-  &mut MeshPrimitive {
-    self.primitives.push(primitive);
-    self.primitives.last_mut().unwrap()
-  }
-}
-
-#[derive(Copy, Clone, PartialEq, serde_repr::Serialize_repr)]
-#[repr(u16)]
-pub enum ComponentType {
-  Byte = 5120,
-  UnsignedByte = 5121,
-  Short = 5122,
-  UnsignedShort = 5123,
-  UnsignedInt = 5125,
-  Float = 5126,
-}
-
-impl ComponentType {
-  pub fn byte_count(&self) -> u32 {
-    match self {
-      Self::Byte          => 1,
-      Self::UnsignedByte  => 1,
-      Self::Short         => 2,
-      Self::UnsignedShort => 2,
-      Self::UnsignedInt   => 4,
-      Self::Float         => 4,
-    }
-  }
-}
-
-#[derive(Copy, Clone, serde::Serialize)]
-pub enum Type {
-  SCALAR,
-  VEC2,
-  VEC3,
-  VEC4,
-  MAT2,
-  MAT3,
-  MAT4,
-}
-
-impl Type {
-  pub fn component_count(&self) -> u32 {
-    match self {
-      Self::SCALAR =>  1,
-      Self::VEC2   =>  2,
-      Self::VEC3   =>  3,
-      Self::VEC4   =>  4,
-      Self::MAT2   =>  4,
-      Self::MAT3   =>  9,
-      Self::MAT4   => 16,
-    }
-  }
-}
-
-#[derive(Clone, serde::Serialize)]
-pub struct Accessor {
-  // Next time I modify this, I want to try out:
-  // #[serde(rename_all = "camelCase")]
-  
-  #[serde(skip_serializing_if = "String::is_empty")]
-  pub name: String,
-  
-  #[serde(rename = "bufferView")]
-  #[serde(skip_serializing_if = "Option::is_none")]
-  pub buffer_view: Option<u32>,
-  
-  #[serde(rename = "byteOffset")]
-  #[serde(skip_serializing_if = "is_default_byte_offset")]
-  pub byte_offset: u32,
-  
-  #[serde(rename = "componentType")]
-  pub component_type: ComponentType,
-  
-  #[serde(skip_serializing_if = "is_default_normalized")]
-  pub normalized: bool,
-  
-  pub count: u32,
-  
-  #[serde(rename = "type")]
-  pub type_: Type,
-  
-  #[serde(skip_serializing_if = "Vec::is_empty")]
-  pub max: Vec<f32>,
-  
-  #[serde(skip_serializing_if = "Vec::is_empty")]
-  pub min: Vec<f32>,
-  
-  //pub extensions: ??,
-  
-  // In the .gltf spec but will have to wait for now:
-  /* pub max: ??,
-   *  pub min: ??,
-   *  pub sparse: ??,
-   *  pub extras: ??,*/
-}
-
-impl Accessor {
-  pub fn new<S: Into<String>>(name: S) -> Self {
-    Self {
-      name: name.into(),
-      buffer_view: None,
-      byte_offset: 0,
-      component_type: ComponentType::Byte,
-      normalized: false,
-      count: 0,
-      type_: Type::SCALAR,
-      min: Vec::new(),
-      max: Vec::new(),
-    }
-  }
-}
-
-fn is_default_byte_offset(value: &u32) -> bool {
-  *value == 0
-}
-
-fn is_default_normalized(value: &bool) -> bool {
-  *value == false
-}
-
-#[derive(Copy, Clone, PartialEq, serde_repr::Serialize_repr)]
-#[repr(u16)]
-pub enum Target {
-  ArrayBuffer = 34962,
-  ElementArrayBuffer = 34963,
-}
-
-#[derive(Clone, serde::Serialize)]
-pub struct BufferView {
-  #[serde(skip_serializing_if = "String::is_empty")]
-  pub name: String,
-  
-  pub buffer: u32,
-  
-  #[serde(rename = "byteLength")]
-  pub byte_length: u32,
-  
-  #[serde(rename = "byteOffset")]
-  pub byte_offset: u32,
-  
-  #[serde(rename = "byteStride")]
-  #[serde(skip_serializing_if = "Option::is_none")]
-  pub byte_stride: Option<u32>,
-  
-  #[serde(skip_serializing_if = "Option::is_none")]
-  pub target: Option<Target>,
-  
-  //pub extensions: ??,
-  
-  // In the .gltf spec but will have to wait for now:
-  /*pub extras: ??,*/
-}
-
-impl BufferView {
-  pub fn new<S: Into<String>>(name: S) -> Self {
-    Self {
-      name: name.into(),
-      buffer: 0,
-      byte_length: 0,
-      byte_offset: 0,
-      byte_stride: None,
-      target: None,
-    }
-  }
-}
-
-#[derive(Clone, serde::Serialize)]
-pub struct Buffer {
-  #[serde(skip_serializing_if = "String::is_empty")]
-  pub name: String,
-  
-  #[serde(rename = "byteLength")]
-  pub byte_length: u32,
-  
-  #[serde(skip_serializing_if = "String::is_empty")]
-  pub uri: String,
-  
-  //pub extensions: ??,
-  
-  // In the .gltf spec but will have to wait for now:
-  /*pub extras: ??,*/
-}
-
-impl Buffer {
-  pub fn new<S: Into<String>>(name: S) -> Self {
-    Self {
-      name: name.into(),
-      byte_length: 0,
-      uri: String::from(""),
-    }
+fn byte_count(component_type: gltf_json::accessor::ComponentType) -> u64 {
+  match component_type {
+    gltf_json::accessor::ComponentType::U8  => 1,
+    gltf_json::accessor::ComponentType::I8  => 1,
+    gltf_json::accessor::ComponentType::U16 => 2,
+    gltf_json::accessor::ComponentType::I16 => 2,
+    gltf_json::accessor::ComponentType::U32 => 4,
+    gltf_json::accessor::ComponentType::F32 => 4,
   }
 }
 
@@ -1273,8 +619,32 @@ impl Buffer {
 
 #[ffi]
 fn init() -> FFIResult<()> {
-  let mut gltf_source = lock(&GLTF_SOURCE)?;
-  *gltf_source = Some(GLTF::new());
+  let mut glb_json_option = lock(&GLB_JSON)?;
+  *glb_json_option = Some(gltf_json::Root::default());
+  let glb_json = glb_json_option.as_mut().ok_or(
+    ErrorCode::NotInitialized)?;
+  
+  glb_json.asset.generator = Some(String::from("emg v0.1.0"));
+  glb_json.asset.min_version = Some(String::from("2.0"));
+  
+  // Currently, all paraforge models use a single buffer which packs into the
+  // BIN section of the GLB output
+  glb_json.push(gltf_json::Buffer {
+    name: None,
+    byte_length: gltf_json::validation::USize64(0),
+    uri: None,
+    extensions: None,
+    extras: Default::default(),
+  });
+  
+  let scene_handle = glb_json.push(gltf_json::Scene {
+    name: Some(String::from("A name for a scene")),
+    nodes: Vec::new(),
+    extensions: None,
+    extras: Default::default(),
+  });
+  glb_json.scene = Some(scene_handle);
+  
   return Ok(());
 }
 
@@ -1284,38 +654,44 @@ roughness: f64) -> FFIResult<usize> {
   let name = get_string_transport(0)?;
   
   // This lock must be saved in a variable before it can be used.
-  // (lock(&GLTF_SOURCE)?).as_ref()... does not compile. This snippet cannot be
+  // (lock(&GLB_JSON)?).as_ref()... does not compile. This snippet cannot be
   // wrapped in a function
-  let mut gltf_source_option = lock(&GLTF_SOURCE)?;
-  let gltf_source = gltf_source_option.as_mut().ok_or(
+  let mut glb_json_option = lock(&GLB_JSON)?;
+  let glb_json = glb_json_option.as_mut().ok_or(
     ErrorCode::NotInitialized)?;
   
-  let handle = gltf_source.materials.len();
-  gltf_source.materials.push(Material::new(name));
-  gltf_source.materials[handle].pbr_metallic_roughness = PBRMetallicRoughness {
-    metallic_factor: metallicity,
-    roughness_factor: roughness,
-    base_color_factor: Color4 { r, g, b, a },
-  };
+  let mut pbr = gltf_json::material::PbrMetallicRoughness::default();
+  pbr.metallic_factor.0 = metallicity as f32;
+  pbr.roughness_factor.0 = roughness as f32;
+  pbr.base_color_factor = gltf_json::material::PbrBaseColorFactor([r as f32,
+    g as f32, b as f32, a as f32]);
   
-  return Ok(handle);
+  let mut material = gltf_json::Material::default();
+  material.name = Some(name);
+  material.pbr_metallic_roughness = pbr;
+  
+  return Ok(glb_json.push(material).value());
 }
 
 #[ffi]
 fn add_node_to_scene(scene: usize) -> FFIResult<usize> {
   // This lock must be saved in a variable before it can be used.
-  // (lock(&GLTF_SOURCE)?).as_ref()... does not compile. This snippet cannot be
+  // (lock(&GLB_JSON)?).as_ref()... does not compile. This snippet cannot be
   // wrapped in a function
-  let mut gltf_source_option = lock(&GLTF_SOURCE)?;
-  let gltf_source = gltf_source_option.as_mut().ok_or(
+  let mut glb_json_option = lock(&GLB_JSON)?;
+  let glb_json = glb_json_option.as_mut().ok_or(
     ErrorCode::NotInitialized)?;
   
-  if scene >= gltf_source.scenes.len() {
+  if scene >= glb_json.scenes.len() {
     return Err(ErrorCode::HandleOutOfBounds);
   }
   
-  gltf_source.new_root_node(scene as u32, "Fortress Wall Battlement");
-  return Ok(gltf_source.nodes.len() - 1);
+  let mut node = gltf_json::Node::default();
+  node.name = Some(String::from("Fortress Wall Battlement"));
+  
+  let handle = glb_json.push(node);
+  glb_json.scenes[scene].nodes.push(handle);
+  return Ok(handle.value());
 }
 
 #[ffi]
@@ -1323,34 +699,41 @@ fn add_mesh_to_node(node: usize) -> FFIResult<usize> {
   let name = get_string_transport(0)?;
   
   // This lock must be saved in a variable before it can be used.
-  // (lock(&GLTF_SOURCE)?).as_ref()... does not compile. This snippet cannot be
+  // (lock(&GLB_JSON)?).as_ref()... does not compile. This snippet cannot be
   // wrapped in a function
-  let mut gltf_source_option = lock(&GLTF_SOURCE)?;
-  let gltf_source = gltf_source_option.as_mut().ok_or(
+  let mut glb_json_option = lock(&GLB_JSON)?;
+  let glb_json = glb_json_option.as_mut().ok_or(
     ErrorCode::NotInitialized)?;
-    
-    if node >= gltf_source.nodes.len() {
-      return Err(ErrorCode::HandleOutOfBounds);
-    }
-    
-    gltf_source.new_mesh(node as u32, name);
-    return Ok(gltf_source.nodes.len() - 1);
+  
+  if node >= glb_json.nodes.len() {
+    return Err(ErrorCode::HandleOutOfBounds);
+  }
+  
+  let handle = glb_json.push(gltf_json::Mesh {
+    name: Some(String::from(name)),
+    primitives: Vec::new(),
+    weights: None,
+    extensions: None,
+    extras: Default::default(),
+  });
+  glb_json.nodes[node].mesh = Some(handle);
+  return Ok(handle.value());
 }
 
 #[ffi]
 fn add_primitive_to_mesh(mesh: usize, packed_geometry: usize, material: usize)
 -> FFIResult<usize> {
   // This lock must be saved in a variable before it can be used.
-  // (lock(&GLTF_SOURCE)?).as_ref()... does not compile. This snippet cannot be
+  // (lock(&GLB_JSON)?).as_ref()... does not compile. This snippet cannot be
   // wrapped in a function
-  let mut gltf_source_option = lock(&GLTF_SOURCE)?;
-  let gltf_source = gltf_source_option.as_mut().ok_or(
+  let mut glb_json_option = lock(&GLB_JSON)?;
+  let glb_json = glb_json_option.as_mut().ok_or(
     ErrorCode::NotInitialized)?;
   
-  if mesh >= gltf_source.meshes.len() {
+  if mesh >= glb_json.meshes.len() {
     return Err(ErrorCode::HandleOutOfBounds);
   }
-  if material >= gltf_source.materials.len() {
+  if material >= glb_json.materials.len() {
     return Err(ErrorCode::HandleOutOfBounds);
   }
   
@@ -1359,13 +742,22 @@ fn add_primitive_to_mesh(mesh: usize, packed_geometry: usize, material: usize)
     return Err(ErrorCode::HandleOutOfBounds);
   }
   
-  let mut prim = MeshPrimitive::new();
-  prim.attributes.position = Some(packed_geometries[packed_geometry]
-    .vertex_buffer);
-  prim.indices = Some(packed_geometries[packed_geometry].triangle_buffer);
-  prim.material = Some(material as u32);
-  gltf_source.meshes[mesh].primitives.push(prim);
-  return Ok(gltf_source.meshes[mesh].primitives.len() - 1);
+  let mut prim = gltf_json::mesh::Primitive {
+    attributes: BTreeMap::new(),
+    indices: Some(gltf_json::Index::new(
+      packed_geometries[packed_geometry].triangle_buffer)),
+    material: Some(gltf_json::Index::new(material as u32)),
+    mode: gltf_json::validation::Checked::Valid(
+      gltf_json::mesh::Mode::Triangles),
+    targets: None,
+    extensions: None,
+    extras: Default::default(),
+  };
+  prim.attributes.insert(
+    gltf_json::validation::Checked::Valid(gltf_json::mesh::Semantic::Positions), gltf_json::Index::new(packed_geometries[packed_geometry].vertex_buffer));
+  
+  glb_json.meshes[mesh].primitives.push(prim);
+  return Ok(glb_json.meshes[mesh].primitives.len() - 1);
 }
 
 #[ffi]
@@ -1509,17 +901,18 @@ fn geometry_extrude(handle: usize, x: f64, y: f64, z: f64) -> FFIResult<()> {
 #[ffi]
 fn geometry_pack(handle: usize) -> FFIResult<usize> {
   // This lock must be saved in a variable before it can be used.
-  // (lock(&GLTF_SOURCE)?).as_ref()... does not compile. This snippet cannot be
+  // (lock(&GLB_JSON)?).as_ref()... does not compile. This snippet cannot be
   // wrapped in a function
-  let mut gltf_source_option = lock(&GLTF_SOURCE)?;
-  let mut gltf_source = gltf_source_option.as_mut().ok_or(
+  let mut glb_json_option = lock(&GLB_JSON)?;
+  let mut glb_json = glb_json_option.as_mut().ok_or(
     ErrorCode::NotInitialized)?;
+  let mut glb_bin = lock(&GLB_BIN)?;
   
   let geometries = lock(&GEOMETRIES)?;
   if handle >= geometries.len() { return Err(ErrorCode::HandleOutOfBounds) };
   let mut packed_geometries = lock(&PACKED_GEOMETRIES)?;
   
-  packed_geometries.push(geometries[handle].pack(&mut gltf_source));
+  packed_geometries.push(geometries[handle].pack(&mut glb_bin, &mut glb_json));
   return Ok(packed_geometries.len() - 1);
 }
 
@@ -1547,59 +940,60 @@ impl std::io::Write for DryRunWriter {
 #[ffi]
 fn serialize() -> FFIResult<FatPointer> {
   // This lock must be saved in a variable before it can be used.
-  // (lock(&GLTF_SOURCE)?).as_ref()... does not compile. This snippet cannot be
+  // (lock(&GLB_JSON)?).as_ref()... does not compile. This snippet cannot be
   // wrapped in a function
-  let gltf_source_option = lock(&GLTF_SOURCE)?;
-  let gltf_source = gltf_source_option.as_ref().ok_or(
+  let glb_json_option = lock(&GLB_JSON)?;
+  let glb_json = glb_json_option.as_ref().ok_or(
     ErrorCode::NotInitialized)?;
+  let glb_bin = lock(&GLB_BIN)?;
   
-  let mut gltf_output = lock(&GLTF_OUTPUT)?;
+  let mut glb_output = lock(&GLB_OUTPUT)?;
   
   let mut dry_run_writer = DryRunWriter::new();
-  serde_json::ser::to_writer(&mut dry_run_writer, &gltf_source).unwrap();
+  serde_json::ser::to_writer(&mut dry_run_writer, &glb_json).unwrap();
   
-  // Per GLB spec, the length field of each chunk EXCLUDES headers and INCLUDES 
+  // Per GLB spec, the length field of each chunk EXCLUDES headers and INCLUDES
   // padding
   let json_padding = (4 - dry_run_writer.bytes_written % 4) % 4;
   let json_length = dry_run_writer.bytes_written + json_padding;
-  let bin_padding = (4 - gltf_source.glb_bin.len() % 4) % 4;
-  let bin_length = gltf_source.glb_bin.len() + bin_padding;
+  let bin_padding = (4 - glb_bin.len() % 4) % 4;
+  let bin_length = glb_bin.len() + bin_padding;
   
   // Per GLB spec, overall length field INCLUDES headers
   let mut glb_length = 12 + 8 + json_length;
-  if gltf_source.glb_bin.len() > 0 {
+  if glb_bin.len() > 0 {
     glb_length += 8 + bin_length;
   }
   
-  gltf_output.clear();
-  gltf_output.reserve_exact(glb_length);
+  glb_output.clear();
+  glb_output.reserve_exact(glb_length);
   
   // GLB header
-  gltf_output.append(&mut String::from("glTF").into_bytes());
-  gltf_output.extend_from_slice(&2u32.to_le_bytes()); // GLTF version #
-  gltf_output.extend_from_slice(&(glb_length).to_le_bytes());
+  glb_output.append(&mut String::from("glTF").into_bytes());
+  glb_output.extend_from_slice(&2u32.to_le_bytes()); // GLTF version #
+  glb_output.extend_from_slice(&(glb_length).to_le_bytes());
   
   // JSON chunk
-  gltf_output.extend_from_slice(&(json_length).to_le_bytes());
-  gltf_output.append(&mut String::from("JSON").into_bytes());
-  serde_json::ser::to_writer(&mut (*gltf_output), &gltf_source).unwrap();
+  glb_output.extend_from_slice(&(json_length).to_le_bytes());
+  glb_output.append(&mut String::from("JSON").into_bytes());
+  serde_json::ser::to_writer(&mut (*glb_output), &glb_json).unwrap();
   for _ in 0..json_padding {
     // Per GLB spec, JSON chunk is padded with ASCII spaces
-    gltf_output.push(0x20);
+    glb_output.push(0x20);
   }
   
   // BIN chunk
-  if gltf_source.glb_bin.len() > 0 {
-    gltf_output.extend_from_slice(&(bin_length).to_le_bytes());
-    gltf_output.append(&mut String::from("BIN\0").into_bytes());
-    gltf_output.extend(&gltf_source.glb_bin);
+  if glb_bin.len() > 0 {
+    glb_output.extend_from_slice(&(bin_length).to_le_bytes());
+    glb_output.append(&mut String::from("BIN\0").into_bytes());
+    glb_output.extend(&*glb_bin);
     for _ in 0..bin_padding {
       // Per GLB spec, BIN chunk is padded with zeroes
-      gltf_output.push(0);
+      glb_output.push(0);
     }
   }
   
-  gltf_output.shrink_to_fit();
+  glb_output.shrink_to_fit();
   
-  return FatPointer::try_from(gltf_output.as_ref());
+  return FatPointer::try_from(glb_output.as_ref());
 }

@@ -27,7 +27,7 @@ for(let key in paraforge) window[key] = paraforge[key]
 const paraforge_class_instance = new paraforge.Paraforge(1)
 await paraforge_class_instance.init()
 await paraforge_class_instance.add_file('/first_model.py',
-  '/examples/first_model.pf.py')
+  '/examples/first_model.py')
 await paraforge_class_instance.execute('first_model', 'first_model', [], {})
 const actual_glb = await paraforge_class_instance.serialize()
 
