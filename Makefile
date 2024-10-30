@@ -37,6 +37,12 @@ install-dev:
 	venv-$(PY)/bin/python -m pip install --upgrade pip
 	venv-$(PY)/bin/python -m pip install pytest wasmtime reloadserver
 	cd test-files && npm install
+	
+	# Only way to silence python linter spam is to remove the relevant
+	# modules from the host. Does that mean the LSP isn't using the venv?
+	# Not sure if there's any way to make the LSP use the venv
+	python -m pip uninstall pyflakes
+	python -m pip uninstall pycodestyle
 
 package:
 	$(PY) -m pip install --user --upgrade setuptools wheel
