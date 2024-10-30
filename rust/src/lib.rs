@@ -200,25 +200,21 @@ impl Geometry {
   }
   
   // Apply a translation
-  pub fn translate(&mut self, x: f64, y: f64, z: f64) -> &mut Self {
+  pub fn translate(&mut self, x: f64, y: f64, z: f64) {
     let translation = V3::new(x, y, z);
     
     for vtx in &mut self.vtcs {
       *vtx += translation;
     }
-    
-    self
   }
   
   // Apply a scale
-  pub fn scale(&mut self, x: f64, y: f64, z: f64) -> &mut Self {
+  pub fn scale(&mut self, x: f64, y: f64, z: f64) {
     let scale = V3::new(x, y, z);
     
     for vtx in &mut self.vtcs {
       vtx.component_mul_assign(&scale);
     }
-    
-    self
   }
   
   // rotations / matrices
