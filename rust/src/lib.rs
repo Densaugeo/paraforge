@@ -672,7 +672,7 @@ roughness: f64) -> FFIResult<usize> {
 }
 
 #[ffi]
-fn add_node_to_scene(scene: usize) -> FFIResult<usize> {
+fn new_node_in_scene(scene: usize) -> FFIResult<usize> {
   // This lock must be saved in a variable before it can be used.
   // (lock(&GLB_JSON)?).as_ref()... does not compile. This snippet cannot be
   // wrapped in a function
@@ -693,7 +693,7 @@ fn add_node_to_scene(scene: usize) -> FFIResult<usize> {
 }
 
 #[ffi]
-fn add_mesh_to_node(node: usize) -> FFIResult<usize> {
+fn new_mesh_in_node(node: usize) -> FFIResult<usize> {
   let name = get_string_transport(0)?;
   
   // This lock must be saved in a variable before it can be used.
@@ -719,7 +719,7 @@ fn add_mesh_to_node(node: usize) -> FFIResult<usize> {
 }
 
 #[ffi]
-fn add_prim_to_mesh(mesh: usize, packed_geometry: usize, material: usize)
+fn new_prim_in_mesh(mesh: usize, packed_geometry: usize, material: usize)
 -> FFIResult<usize> {
   // This lock must be saved in a variable before it can be used.
   // (lock(&GLB_JSON)?).as_ref()... does not compile. This snippet cannot be
@@ -766,7 +766,7 @@ fn geometry_new() -> FFIResult<usize> {
 }
 
 #[ffi]
-fn geometry_cube() -> FFIResult<usize> {
+fn geometry_new_cube() -> FFIResult<usize> {
   let mut geometries = lock(&GEOMETRIES)?;
   geometries.push(Geometry::cube());
   return Ok(geometries.len() - 1);

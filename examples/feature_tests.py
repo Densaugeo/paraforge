@@ -78,10 +78,10 @@ pressure_angle: float = π/9, backlash: float = 0.1, curve_segments: int = 10,
     blue_block.t(6, 0, 0)
     
     node_gear = Node('Gear Test')
-    mesh_gear = node_gear.add_mesh('Gear Test')
-    mesh_gear.add_prim(red_block.pack(), material=Material('Red', '#f00'))
+    mesh_gear = node_gear.new_mesh('Gear Test')
+    mesh_gear.new_prim(red_block.pack(), material=Material('Red', '#f00'))
     
     node_ext = Node('Extrusion Test Blocks')
-    mesh_ext = node_ext.add_mesh('Extrusion Test Blocks')
-    mesh_ext.add_prim(green_block.pack(), material=Material('Green', '#0f0'))
-    mesh_ext.add_prim(blue_block .pack(), material=Material('Blue' , '#00f'))
+    mesh_ext = node_ext.new_mesh('Extrusion Test Blocks')
+    mesh_ext.new_prim(green_block.pack(), material=Material('Green', '#0f0'))
+    mesh_ext.new_prim(blue_block .pack(), material=Material('Blue' , '#00f'))

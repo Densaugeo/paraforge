@@ -9,6 +9,6 @@ def gen_first_model():
     black_block.select_tris(-10, -10, 0.5, 10, 10, 0.7).delete_tris()
     
     node = Node('Fortress Wall Battlement')
-    mesh = node.add_mesh('Fortress Wall Battlement')
-    mesh.add_prim(red_block.pack(), material=red)
-    mesh.add_prim(black_block.pack(), material=black)
+    mesh = node.new_mesh('Fortress Wall Battlement')
+    mesh.new_prim(red_block.pack(), material=red)
+    mesh.new_prim(black_block.pack(), material=black)

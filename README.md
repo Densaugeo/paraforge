@@ -14,8 +14,6 @@ Evaluation of a Python-Rust architecture for a parametric modeling project.
     actual geometry code. The Python wrappers for wasm_calls are gone now! Can I
     remove more layers?
   * Change selection data structure from Vector to HashSet
-  * Naming standardization: Methods that add an existing object should be named
-    .add_\*, methods that create a new object should be named .new_\*
 - Basic geometries
   * Plane
   * Some spheres

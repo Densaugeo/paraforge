@@ -62,9 +62,9 @@ class Node:
         self._name = name
         
         write_string(0, name)
-        self._handle = wasm_call('add_node_to_scene', 0)
+        self._handle = wasm_call('new_node_in_scene', 0)
     
-    def add_mesh(self, name: str = '') -> 'Mesh':
+    def new_mesh(self, name: str = '') -> 'Mesh':
         return Mesh(self, name)
 
 
@@ -83,10 +83,10 @@ class Mesh:
         self._node = node
         
         write_string(0, name)
-        self._handle = wasm_call('add_mesh_to_node', self._node.handle)
+        self._handle = wasm_call('new_mesh_in_node', self._node.handle)
     
-    def add_prim(self, packed_geometry: 'PackedGeometry', material: 'Material'):
-        wasm_call('add_prim_to_mesh', self._handle, packed_geometry.handle,
+    def new_prim(self, packed_geometry: 'PackedGeometry', material: 'Material'):
+        wasm_call('new_prim_in_mesh', self._handle, packed_geometry.handle,
             material.handle)
 
 
@@ -161,7 +161,7 @@ class Material:
 
 class Geometry:
     def Cube() -> 'Geometry':
-        return Geometry(wasm_call('geometry_cube'))
+        return Geometry(wasm_call('geometry_new_cube'))
     
     @property
     def handle(self): return self._handle
