@@ -12,9 +12,6 @@ build:
 	cp -f rust/target/wasm32-unknown-unknown/release/paraforge.wasm javascript/paraforge-rust.wasm
 	cp -f paraforge/__init__.py javascript/__init__.py
 
-test-scratch:
-	$(PY) test-scratch.py
-
 test-all:
 	./test-all.sh
 
