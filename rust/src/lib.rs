@@ -1,4 +1,5 @@
-use std::{collections::{BTreeMap, HashMap}, sync::{Mutex, MutexGuard}};
+use std::collections::{BTreeMap, HashMap, BTreeSet};
+use std::sync::{Mutex, MutexGuard};
 
 pub use nalgebra::Vector3 as V3;
 
@@ -148,7 +149,7 @@ pub struct Geometry {
   
   pub tris: Vec<[u32; 3]>,
   
-  pub selection: Vec<u32>,
+  pub selection: BTreeSet<u32>,
   pub selection_type: SelectionType,
 }
 
@@ -226,10 +227,10 @@ impl Geometry {
   
   // Vertex deduplication
   
-  /// Returns a list of vertices within the bounding box defined by the given
-  /// points. Allows error of 1e-6
+  /// Selects vertices within the bounding box defined by the given points.
+  /// Allows error of 1e-6
   pub fn select_vtcs(&mut self, bound_1: V3<f64>, bound_2: V3<f64>) {
-    self.selection.drain(..);
+    self.selection.clear();
     self.selection_type = SelectionType::VTCS;
     
     let lower_bound = bound_1.inf(&bound_2) - V3::new(1e-6, 1e-6, 1e-6);
@@ -239,25 +240,25 @@ impl Geometry {
       if lower_bound[0] < self.vtcs[i][0] && self.vtcs[i][0] < upper_bound[0] &&
          lower_bound[1] < self.vtcs[i][1] && self.vtcs[i][1] < upper_bound[1] &&
          lower_bound[2] < self.vtcs[i][2] && self.vtcs[i][2] < upper_bound[2] {
-        self.selection.push(i as u32);
+        self.selection.insert(i as u32);
       }
     }
   }
   
-  /// Returns a list of triangles within the bounding box defined by the given
-  /// points. Allows error of 1e-6
+  /// Selects triangles within the bounding box defined by the given points.
+  /// Allows error of 1e-6
   pub fn select_tris(&mut self, bound_1: V3<f64>, bound_2: V3<f64>) {
     self.select_vtcs(bound_1, bound_2);
     let bounded_vtcs = self.selection.clone();
     
-    self.selection.drain(..);
+    self.selection.clear();
     self.selection_type = SelectionType::TRIS;
     
     for i in 0..self.tris.len() {
       if bounded_vtcs.contains(&self.tris[i][0]) &&
          bounded_vtcs.contains(&self.tris[i][1]) &&
          bounded_vtcs.contains(&self.tris[i][2]) {
-        self.selection.push(i as u32);
+        self.selection.insert(i as u32);
       }
     }
   }
@@ -287,18 +288,15 @@ impl Geometry {
       }
     }
     
-    self.selection.drain(..);
+    self.selection.clear();
   }
   
   /// Automatically deletes affected triangles
   pub fn delete_vtcs(&mut self) {
     // Vertices must be processed in reverse order, because deletion of lower-
     // index vertices can change the index of higher-index vertices
-    self.selection.sort_unstable();
-    self.selection.reverse();
-    
-    for vtx in self.selection.clone() {
-      self.delete_vtx(vtx);
+    for vtx in self.selection.clone().iter().rev() {
+      self.delete_vtx(*vtx);
     }
   }
   
@@ -316,17 +314,14 @@ impl Geometry {
   
   pub fn delete_tri(&mut self, tri: u32) {
     self.tris.swap_remove(tri as usize);
-    self.selection.drain(..);
+    self.selection.clear();
   }
   
   pub fn delete_tris(&mut self) {
     // Triangles must be processed in reverse order, because deletion of lower-
     // index triangles can change the index of higher-index triangles
-    self.selection.sort_unstable();
-    self.selection.reverse();
-    
-    for tri in self.selection.clone() {
-      self.delete_tri(tri);
+    for tri in self.selection.clone().iter().rev() {
+      self.delete_tri(*tri);
     }
   }
   
@@ -433,7 +428,7 @@ impl Geometry {
     Self {
       vtcs: Vec::new(),
       tris: Vec::new(),
-      selection: Vec::new(),
+      selection: BTreeSet::new(),
       selection_type: SelectionType::VTCS,
     }
   }
@@ -478,7 +473,7 @@ impl Geometry {
         [0, 4, 2],
         [2, 4, 6],
       ],
-      selection: Vec::new(),
+      selection: BTreeSet::new(),
       selection_type: SelectionType::VTCS,
     }
   }

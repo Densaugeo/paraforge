@@ -13,7 +13,6 @@ Evaluation of a Python-Rust architecture for a parametric modeling project.
   * Try to de-abstract the many layers to get from a top-level Python call to
     actual geometry code. The Python wrappers for wasm_calls are gone now! Can I
     remove more layers?
-  * Change selection data structure from Vector to HashSet
 - Basic geometries
   * Plane
   * Some spheres
