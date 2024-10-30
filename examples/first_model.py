@@ -6,10 +6,9 @@ def gen_first_model():
     
     red_block   = Geometry.Cube().s(1  , 0.25, 0.3).t(0, 0.25, 0.3)
     black_block = Geometry.Cube().s(0.5, 0.25, 0.3).t(0, 0.25, 0.9)
-    black_block.select_triangles(-10, -10, 0.5, 10, 10, 0.7) \
-        .delete_triangles()
+    black_block.select_tris(-10, -10, 0.5, 10, 10, 0.7).delete_tris()
     
     node = Node('Fortress Wall Battlement')
     mesh = node.add_mesh('Fortress Wall Battlement')
-    mesh.add_primitive(red_block.pack(), material=red)
-    mesh.add_primitive(black_block.pack(), material=black)
+    mesh.add_prim(red_block.pack(), material=red)
+    mesh.add_prim(black_block.pack(), material=black)

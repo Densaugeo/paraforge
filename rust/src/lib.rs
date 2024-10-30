@@ -117,7 +117,8 @@ pub enum ErrorCode {
   NotInitialized = 16,
   SizeOutOfBounds = 17,
   UnicodeError = 18,
-  VertexOutOfBounds = 19,
+  VtxOutOfBounds = 19,
+  TriOutOfBounds = 20,
 }
 
 // Any value type T used inside an FFIResult should implement FFIValue, but
@@ -138,30 +139,30 @@ type FFIResult<T> = Result<T, ErrorCode>;
 
 #[derive(PartialEq)]
 pub enum SelectionType {
-  VERTICES,
-  TRIANGLES,
+  VTCS,
+  TRIS,
 }
 
 pub struct Geometry {
-  pub vertices: Vec<V3<f64>>,
+  pub vtcs: Vec<V3<f64>>,
   
-  pub triangles: Vec<[u32; 3]>,
+  pub tris: Vec<[u32; 3]>,
   
   pub selection: Vec<u32>,
   pub selection_type: SelectionType,
 }
 
 impl Geometry {
-  /// Raw vertex byffer, suitable for GLTF packing
-  pub fn vertices_raw(&self) -> impl Iterator + '_ {
-    self.vertices.iter().flat_map(|v| vec![v[0] as f32, v[1] as f32,
+  /// Raw vertex buffer, suitable for GLTF packing
+  pub fn vtcs_raw(&self) -> impl Iterator + '_ {
+    self.vtcs.iter().flat_map(|v| vec![v[0] as f32, v[1] as f32,
       v[2] as f32])
   }
   
-  /// Raw triangle byffer, suitable for GLTF packing
-  pub fn triangles_raw(&self) -> impl Iterator + '_ {
-    self.triangles.iter().flat_map(|v| {
-      if self.vertices.len() < 0x10000 {
+  /// Raw triangle buffer, suitable for GLTF packing
+  pub fn tris_raw(&self) -> impl Iterator + '_ {
+    self.tris.iter().flat_map(|v| {
+      if self.vtcs.len() < 0x10000 {
         return vec![
           (v[0]     ) as u8,
           (v[0] >> 8) as u8,
@@ -189,8 +190,8 @@ impl Geometry {
     })
   }
   
-  pub fn triangles_raw_component_type(&self) -> gltf_json::accessor::ComponentType {
-    if self.vertices.len() < 0x10000 {
+  pub fn tris_raw_component_type(&self) -> gltf_json::accessor::ComponentType {
+    if self.vtcs.len() < 0x10000 {
       gltf_json::accessor::ComponentType::U16
     } else {
       gltf_json::accessor::ComponentType::U32
@@ -201,8 +202,8 @@ impl Geometry {
   pub fn t(&mut self, x: f64, y: f64, z: f64) -> &mut Self {
     let translation = V3::new(x, y, z);
     
-    for vertex in &mut self.vertices {
-      *vertex += translation;
+    for vtx in &mut self.vtcs {
+      *vtx += translation;
     }
     
     self
@@ -212,8 +213,8 @@ impl Geometry {
   pub fn s(&mut self, x: f64, y: f64, z: f64) -> &mut Self {
     let scale = V3::new(x, y, z);
     
-    for vertex in &mut self.vertices {
-      vertex.component_mul_assign(&scale);
+    for vtx in &mut self.vtcs {
+      vtx.component_mul_assign(&scale);
     }
     
     self
@@ -227,20 +228,17 @@ impl Geometry {
   
   /// Returns a list of vertices within the bounding box defined by the given
   /// points. Allows error of 1e-6
-  pub fn select_vertices(&mut self, bound_1: V3<f64>, bound_2: V3<f64>) {
+  pub fn select_vtcs(&mut self, bound_1: V3<f64>, bound_2: V3<f64>) {
     self.selection.drain(..);
-    self.selection_type = SelectionType::VERTICES;
+    self.selection_type = SelectionType::VTCS;
     
     let lower_bound = bound_1.inf(&bound_2) - V3::new(1e-6, 1e-6, 1e-6);
     let upper_bound = bound_1.sup(&bound_2) + V3::new(1e-6, 1e-6, 1e-6);
     
-    for i in 0..self.vertices.len() {
-      if lower_bound[0] < self.vertices[i][0] &&
-         self.vertices[i][0] < upper_bound[0] &&
-         lower_bound[1] < self.vertices[i][1] &&
-         self.vertices[i][1] < upper_bound[1] &&
-         lower_bound[2] < self.vertices[i][2] &&
-         self.vertices[i][2] < upper_bound[2] {
+    for i in 0..self.vtcs.len() {
+      if lower_bound[0] < self.vtcs[i][0] && self.vtcs[i][0] < upper_bound[0] &&
+         lower_bound[1] < self.vtcs[i][1] && self.vtcs[i][1] < upper_bound[1] &&
+         lower_bound[2] < self.vtcs[i][2] && self.vtcs[i][2] < upper_bound[2] {
         self.selection.push(i as u32);
       }
     }
@@ -248,43 +246,43 @@ impl Geometry {
   
   /// Returns a list of triangles within the bounding box defined by the given
   /// points. Allows error of 1e-6
-  pub fn select_triangles(&mut self, bound_1: V3<f64>, bound_2: V3<f64>) {
-    self.select_vertices(bound_1, bound_2);
-    let bounded_vertices = self.selection.clone();
+  pub fn select_tris(&mut self, bound_1: V3<f64>, bound_2: V3<f64>) {
+    self.select_vtcs(bound_1, bound_2);
+    let bounded_vtcs = self.selection.clone();
     
     self.selection.drain(..);
-    self.selection_type = SelectionType::TRIANGLES;
+    self.selection_type = SelectionType::TRIS;
     
-    for i in 0..self.triangles.len() {
-      if bounded_vertices.contains(&self.triangles[i][0]) &&
-         bounded_vertices.contains(&self.triangles[i][1]) &&
-         bounded_vertices.contains(&self.triangles[i][2]) {
+    for i in 0..self.tris.len() {
+      if bounded_vtcs.contains(&self.tris[i][0]) &&
+         bounded_vtcs.contains(&self.tris[i][1]) &&
+         bounded_vtcs.contains(&self.tris[i][2]) {
         self.selection.push(i as u32);
       }
     }
   }
   
-  pub fn create_vertex(&mut self, vertex: V3<f64>) {
-    self.vertices.push(vertex);
+  pub fn create_vtx(&mut self, vtx: V3<f64>) {
+    self.vtcs.push(vtx);
   }
   
   /// Automatically deletes affected triangles
-  pub fn delete_vertex(&mut self, vertex: u32) {
+  pub fn delete_vtx(&mut self, vtx: u32) {
     // Swap remove to avoid having to shift vertices
-    self.vertices.swap_remove(vertex as usize);
-    let swapped_vertex = self.vertices.len() as u32;
+    self.vtcs.swap_remove(vtx as usize);
+    let swapped_vtx = self.vtcs.len() as u32;
     
-    for i in 0..self.triangles.len() {
+    for i in 0..self.tris.len() {
       // Delete triangle if it includes deleted vertex
-      if self.triangles[i].contains(&vertex) {
-        self.triangles.swap_remove(i);
+      if self.tris[i].contains(&vtx) {
+        self.tris.swap_remove(i);
         continue;
       }
       
       // Update indices if swapped vertex is referenced
       for j in 0..2 {
-        if self.triangles[i][j] == swapped_vertex {
-          self.triangles[i][j] = vertex
+        if self.tris[i][j] == swapped_vtx {
+          self.tris[i][j] = vtx
         }
       }
     }
@@ -293,58 +291,58 @@ impl Geometry {
   }
   
   /// Automatically deletes affected triangles
-  pub fn delete_vertices(&mut self) {
+  pub fn delete_vtcs(&mut self) {
     // Vertices must be processed in reverse order, because deletion of lower-
     // index vertices can change the index of higher-index vertices
     self.selection.sort_unstable();
     self.selection.reverse();
     
-    for vertex in self.selection.clone() {
-      self.delete_vertex(vertex);
+    for vtx in self.selection.clone() {
+      self.delete_vtx(vtx);
     }
   }
   
-  pub fn create_triangle(&mut self, triangle: [u32; 3]) -> FFIResult<()> {
-    for vertex in triangle {
-      if vertex >= self.vertices.len() as u32 {
-        return Err(ErrorCode::VertexOutOfBounds)
+  pub fn create_tri(&mut self, tri: [u32; 3]) -> FFIResult<()> {
+    for vtx in tri {
+      if vtx >= self.vtcs.len() as u32 {
+        return Err(ErrorCode::VtxOutOfBounds)
       }
     }
     
-    self.triangles.push(triangle);
+    self.tris.push(tri);
     
     Ok(())
   }
   
-  pub fn delete_triangle(&mut self, triangle: u32) {
-    self.triangles.swap_remove(triangle as usize);
+  pub fn delete_tri(&mut self, tri: u32) {
+    self.tris.swap_remove(tri as usize);
     self.selection.drain(..);
   }
   
-  pub fn delete_triangles(&mut self) {
+  pub fn delete_tris(&mut self) {
     // Triangles must be processed in reverse order, because deletion of lower-
     // index triangles can change the index of higher-index triangles
     self.selection.sort_unstable();
     self.selection.reverse();
     
-    for triangle in self.selection.clone() {
-      self.delete_triangle(triangle);
+    for tri in self.selection.clone() {
+      self.delete_tri(tri);
     }
   }
   
-  pub fn delete_stray_vertices(&mut self) {
+  pub fn delete_stray_vtcs(&mut self) {
     // Vertices must be processed in reverse order, because deletion of lower-
     // index vertices can change the index of higher-index vertices
-    for vertex in self.vertices.len()..0 {
-      let mut vertex_used = false;
-      for triangle in &self.triangles {
-        if triangle.contains(&(vertex as u32)) {
-          vertex_used = true;
+    for vtx in self.vtcs.len()..0 {
+      let mut vtx_used = false;
+      for tri in &self.tris {
+        if tri.contains(&(vtx as u32)) {
+          vtx_used = true;
         }
       }
       
-      if vertex_used {
-        self.delete_vertex(vertex as u32);
+      if vtx_used {
+        self.delete_vtx(vtx as u32);
       }
     }
   }
@@ -360,42 +358,42 @@ impl Geometry {
     let mut edges = HashMap::new();
     
     let all_selected = self.selection.len() == match self.selection_type {
-      SelectionType::VERTICES => self.vertices.len(),
-      SelectionType::TRIANGLES => self.triangles.len(),
+      SelectionType::VTCS => self.vtcs.len(),
+      SelectionType::TRIS => self.tris.len(),
     };
     
     // Note: When selecting by triangles, there can be duplicate vertices in the
     // selection
     let vtcs_in_selection: Box<dyn Iterator<Item = u32>> =
     match self.selection_type {
-      SelectionType::VERTICES => Box::new(self.selection.iter().copied()),
-      SelectionType::TRIANGLES => Box::new(self.selection.iter().flat_map(
-        |tri_index| self.triangles[*tri_index as usize]
+      SelectionType::VTCS => Box::new(self.selection.iter().copied()),
+      SelectionType::TRIS => Box::new(self.selection.iter().flat_map(
+        |tri_index| self.tris[*tri_index as usize]
       )),
     };
     
     // Copy selected vertices
     for vtx_index in vtcs_in_selection {
       // Repeat vertices are only possible here if using triangle selection
-      if self.selection_type == SelectionType::TRIANGLES {
+      if self.selection_type == SelectionType::TRIS {
         if vtx_mapping.contains_key(&vtx_index) { continue }
       }
       
-      vtx_mapping.insert(vtx_index, self.vertices.len() as u32);
-      let vtx = self.vertices[vtx_index as usize];
-      self.vertices.push(vtx + displacement);
+      vtx_mapping.insert(vtx_index, self.vtcs.len() as u32);
+      let vtx = self.vtcs[vtx_index as usize];
+      self.vtcs.push(vtx + displacement);
     }
     
     let candidate_tris: Box<dyn Iterator<Item = u32>> =
     match self.selection_type {
-      SelectionType::VERTICES => Box::new(0u32..self.triangles.len() as u32),
-      SelectionType::TRIANGLES => Box::new(self.selection.iter().copied()),
+      SelectionType::VTCS => Box::new(0u32..self.tris.len() as u32),
+      SelectionType::TRIS => Box::new(self.selection.iter().copied()),
     };
     
     // Move/copy selected tris (tris are only copied if the entire geometry was
     // selected)
     for tri_index in candidate_tris {
-      let tri = &mut self.triangles[tri_index as usize];
+      let tri = &mut self.tris[tri_index as usize];
       
       let Some(&t0) = vtx_mapping.get(&tri[0]) else { continue };
       let Some(&t1) = vtx_mapping.get(&tri[1]) else { continue };
@@ -415,7 +413,7 @@ impl Geometry {
       
       if all_selected {
         (tri[0], tri[1]) = (tri[1], tri[0]);
-        self.triangles.push([t0, t1, t2]);
+        self.tris.push([t0, t1, t2]);
       } else {
         (tri[0], tri[1], tri[2]) = (t0, t1, t2);
       }
@@ -425,24 +423,24 @@ impl Geometry {
     for (key, value) in edges {
       if value == false { continue }
       
-      self.triangles.push([key.0, key.1, *vtx_mapping.get(&key.1).unwrap()]);
-      self.triangles.push([key.0, *vtx_mapping.get(&key.1).unwrap(),
+      self.tris.push([key.0, key.1, *vtx_mapping.get(&key.1).unwrap()]);
+      self.tris.push([key.0, *vtx_mapping.get(&key.1).unwrap(),
         *vtx_mapping.get(&key.0).unwrap()]);
     }
   }
   
   pub fn new() -> Self {
     Self {
-      vertices: Vec::new(),
-      triangles: Vec::new(),
+      vtcs: Vec::new(),
+      tris: Vec::new(),
       selection: Vec::new(),
-      selection_type: SelectionType::VERTICES,
+      selection_type: SelectionType::VTCS,
     }
   }
   
   pub fn cube() -> Self {
     Self {
-      vertices: vec![
+      vtcs: vec![
         V3::new(-1.0,  1.0, -1.0),
         V3::new(-1.0,  1.0,  1.0),
         
@@ -455,7 +453,7 @@ impl Geometry {
         V3::new( 1.0, -1.0, -1.0),
         V3::new( 1.0, -1.0,  1.0),
       ],
-      triangles: vec![
+      tris: vec![
         // Top
         [1, 3, 5],
         [3, 7, 5],
@@ -481,7 +479,7 @@ impl Geometry {
         [2, 4, 6],
       ],
       selection: Vec::new(),
-      selection_type: SelectionType::VERTICES,
+      selection_type: SelectionType::VTCS,
     }
   }
   
@@ -491,13 +489,13 @@ impl Geometry {
     // same precision as GLTF vertices
     let mut min = V3::repeat(f32::MAX);
     let mut max = V3::repeat(f32::MIN);
-    for vertex in &self.vertices {
-      let vertex = V3::new(vertex.x as f32, vertex.y as f32, vertex.z as f32);
-      min = min.inf(&vertex);
-      max = max.sup(&vertex);
+    for vtx in &self.vtcs {
+      let vtx = V3::new(vtx.x as f32, vtx.y as f32, vtx.z as f32);
+      min = min.inf(&vtx);
+      max = max.sup(&vtx);
     }
     
-    append_to_glb_bin(glb_bin, glb_json, self.vertices_raw(),
+    append_to_glb_bin(glb_bin, glb_json, self.vtcs_raw(),
       gltf_json::accessor::Type::Vec3, gltf_json::accessor::ComponentType::F32);
     // Can .unwrap() because the previous .append_to_glb_bin() call guarantees
     // .accessors/min/max will be populated
@@ -509,8 +507,8 @@ impl Geometry {
       gltf_json::validation::Checked::Valid(
       gltf_json::buffer::Target::ArrayBuffer));
     
-    append_to_glb_bin(glb_bin, glb_json, self.triangles_raw(),
-      gltf_json::accessor::Type::Scalar, self.triangles_raw_component_type());
+    append_to_glb_bin(glb_bin, glb_json, self.tris_raw(),
+      gltf_json::accessor::Type::Scalar, self.tris_raw_component_type());
     // Can .unwrap() because the previous .append_to_glb_bin() call guarantees
     // .accessors/min/max will be populated
     glb_json.buffer_views.last_mut().unwrap().target = Some(
@@ -518,15 +516,15 @@ impl Geometry {
       gltf_json::buffer::Target::ElementArrayBuffer));
     
     return PackedGeometry {
-      vertex_buffer: glb_json.accessors.len() as u32 - 2,
-      triangle_buffer: glb_json.accessors.len() as u32 - 1,
+      vtx_buffer: glb_json.accessors.len() as u32 - 2,
+      tri_buffer: glb_json.accessors.len() as u32 - 1,
     }
   }
 }
 
 pub struct PackedGeometry {
-  vertex_buffer: u32,
-  triangle_buffer: u32,
+  vtx_buffer: u32,
+  tri_buffer: u32,
 }
 
 /////////////////////////////////////////////////
@@ -721,7 +719,7 @@ fn add_mesh_to_node(node: usize) -> FFIResult<usize> {
 }
 
 #[ffi]
-fn add_primitive_to_mesh(mesh: usize, packed_geometry: usize, material: usize)
+fn add_prim_to_mesh(mesh: usize, packed_geometry: usize, material: usize)
 -> FFIResult<usize> {
   // This lock must be saved in a variable before it can be used.
   // (lock(&GLB_JSON)?).as_ref()... does not compile. This snippet cannot be
@@ -745,7 +743,7 @@ fn add_primitive_to_mesh(mesh: usize, packed_geometry: usize, material: usize)
   let mut prim = gltf_json::mesh::Primitive {
     attributes: BTreeMap::new(),
     indices: Some(gltf_json::Index::new(
-      packed_geometries[packed_geometry].triangle_buffer)),
+      packed_geometries[packed_geometry].tri_buffer)),
     material: Some(gltf_json::Index::new(material as u32)),
     mode: gltf_json::validation::Checked::Valid(
       gltf_json::mesh::Mode::Triangles),
@@ -754,7 +752,7 @@ fn add_primitive_to_mesh(mesh: usize, packed_geometry: usize, material: usize)
     extras: Default::default(),
   };
   prim.attributes.insert(
-    gltf_json::validation::Checked::Valid(gltf_json::mesh::Semantic::Positions), gltf_json::Index::new(packed_geometries[packed_geometry].vertex_buffer));
+    gltf_json::validation::Checked::Valid(gltf_json::mesh::Semantic::Positions), gltf_json::Index::new(packed_geometries[packed_geometry].vtx_buffer));
   
   glb_json.meshes[mesh].primitives.push(prim);
   return Ok(glb_json.meshes[mesh].primitives.len() - 1);
@@ -795,95 +793,93 @@ fn geometry_scale(handle: usize, x: f64, y: f64, z: f64) -> FFIResult<()> {
 }
 
 #[ffi]
-fn geometry_select_vertices(handle: usize, x1: f64, y1: f64, z1: f64, x2: f64,
+fn geometry_select_vtcs(handle: usize, x1: f64, y1: f64, z1: f64, x2: f64,
 y2: f64, z2: f64) -> FFIResult<()> {
   let mut geometries = lock(&GEOMETRIES)?;
   if handle >= geometries.len() { return Err(ErrorCode::HandleOutOfBounds) };
   
-  geometries[handle].select_vertices(V3::new(x1, y1, z1), V3::new(x2, y2, z2));
+  geometries[handle].select_vtcs(V3::new(x1, y1, z1), V3::new(x2, y2, z2));
   
   Ok(())
 }
 
 #[ffi]
-fn geometry_select_triangles(handle: usize, x1: f64, y1: f64, z1: f64, x2: f64,
+fn geometry_select_tris(handle: usize, x1: f64, y1: f64, z1: f64, x2: f64,
 y2: f64, z2: f64) -> FFIResult<()> {
   let mut geometries = lock(&GEOMETRIES)?;
   if handle >= geometries.len() { return Err(ErrorCode::HandleOutOfBounds) };
   
-  geometries[handle].select_triangles(V3::new(x1, y1, z1), V3::new(x2, y2, z2));
+  geometries[handle].select_tris(V3::new(x1, y1, z1), V3::new(x2, y2, z2));
   
   Ok(())
 }
 
 #[ffi]
-fn geometry_create_vertex(handle: usize, x: f64, y: f64, z: f64,
-) -> FFIResult<()> {
+fn geometry_create_vtx(handle: usize, x: f64, y: f64, z: f64) -> FFIResult<()> {
   let mut geometries = lock(&GEOMETRIES)?;
   if handle >= geometries.len() { return Err(ErrorCode::HandleOutOfBounds) };
   
-  geometries[handle].create_vertex(V3::new(x, y, z));
+  geometries[handle].create_vtx(V3::new(x, y, z));
   
   Ok(())
 }
 
 #[ffi]
-fn geometry_delete_vertex(handle: usize, vertex: u32) -> FFIResult<()> {
+fn geometry_delete_vtx(handle: usize, vtx: u32) -> FFIResult<()> {
   let mut geometries = lock(&GEOMETRIES)?;
   if handle >= geometries.len() { return Err(ErrorCode::HandleOutOfBounds) };
   
-  geometries[handle].delete_vertex(vertex);
+  geometries[handle].delete_vtx(vtx);
   
   Ok(())
 }
 
 #[ffi]
-fn geometry_delete_vertices(handle: usize) -> FFIResult<()> {
+fn geometry_delete_vtcs(handle: usize) -> FFIResult<()> {
   let mut geometries = lock(&GEOMETRIES)?;
   if handle >= geometries.len() { return Err(ErrorCode::HandleOutOfBounds) };
   
-  geometries[handle].delete_vertices();
+  geometries[handle].delete_vtcs();
   
   Ok(())
 }
 
 #[ffi]
-fn geometry_create_triangle(handle: usize, a: u32, b: u32, c: u32,
-) -> FFIResult<()> {
+fn geometry_create_tri(handle: usize, a: u32, b: u32, c: u32) -> FFIResult<()> {
   let mut geometries = lock(&GEOMETRIES)?;
   if handle >= geometries.len() { return Err(ErrorCode::HandleOutOfBounds) };
   
-  geometries[handle].create_triangle([a, b, c])?;
+  geometries[handle].create_tri([a, b, c])?;
   
   Ok(())
 }
 
 #[ffi]
-fn geometry_delete_triangle(handle: usize, triangle: u32) -> FFIResult<()> {
+fn geometry_delete_tri(handle: usize, tri: u32) -> FFIResult<()> {
   let mut geometries = lock(&GEOMETRIES)?;
   if handle >= geometries.len() { return Err(ErrorCode::HandleOutOfBounds) };
   
-  geometries[handle].delete_triangle(triangle);
+  geometries[handle].delete_tri(tri);
   
   Ok(())
 }
 
 #[ffi]
-fn geometry_delete_triangles(handle: usize) -> FFIResult<()> {
+fn geometry_delete_tris(handle: usize) -> FFIResult<()> {
   let mut geometries = lock(&GEOMETRIES)?;
   if handle >= geometries.len() { return Err(ErrorCode::HandleOutOfBounds) };
   
-  geometries[handle].delete_triangles();
+  geometries[handle].delete_tris();
   
   Ok(())
 }
 
 #[ffi]
-fn geometry_delete_stray_vertices(handle: usize) -> FFIResult<()> {
+fn geometry_delete_stray_vtcs(handle: usize) -> FFIResult<()> {
   let mut geometries = lock(&GEOMETRIES)?;
   if handle >= geometries.len() { return Err(ErrorCode::HandleOutOfBounds) };
   
-  geometries[handle].delete_stray_vertices();
+  geometries[handle].delete_stray_vtcs();
   
   Ok(())
 }

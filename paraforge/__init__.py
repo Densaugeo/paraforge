@@ -37,7 +37,8 @@ for code, name in [
     (16, 'NotInitialized'),
     (17, 'SizeOutOfBounds'),
     (18, 'UnicodeError'),
-    (19, 'VertexOutOfBounds'),
+    (19, 'VtxOutOfBounds'),
+    (20, 'TriOutOfBounds'),
 ]:
     paraforge_errors.append(type(name, (ParaforgeError, ), { 'code': code }))
 
@@ -84,9 +85,8 @@ class Mesh:
         write_string(0, name)
         self._handle = wasm_call('add_mesh_to_node', self._node.handle)
     
-    def add_primitive(self, packed_geometry: 'PackedGeometry',
-    material: 'Material'):
-        wasm_call('add_primitive_to_mesh', self._handle, packed_geometry.handle,
+    def add_prim(self, packed_geometry: 'PackedGeometry', material: 'Material'):
+        wasm_call('add_prim_to_mesh', self._handle, packed_geometry.handle,
             material.handle)
 
 
@@ -186,54 +186,52 @@ class Geometry:
         wasm_call('geometry_scale', self._handle, float(x), float(y), float(z))
         return self
     
-    def select_vertices(self, x1: int | float, y1: int | float,
-    z1: int | float, x2: int | float, y2: int | float, z2: int | float,
-    ) -> 'Geometry':
-        wasm_call('geometry_select_vertices', self._handle,
+    def select_vtcs(self, x1: int | float, y1: int | float, z1: int | float,
+    x2: int | float, y2: int | float, z2: int | float) -> 'Geometry':
+        wasm_call('geometry_select_vtcs', self._handle,
             float(x1), float(y1), float(z1), float(x2), float(y2), float(z2))
         return self
     
-    def select_triangles(self, x1: int | float, y1: int | float,
-    z1: int | float, x2: int | float, y2: int | float, z2: int | float,
-    ) -> 'Geometry':
-        wasm_call('geometry_select_triangles', self._handle, float(x1),
-            float(y1), float(z1), float(x2), float(y2), float(z2))
+    def select_tris(self, x1: int | float, y1: int | float, z1: int | float,
+    x2: int | float, y2: int | float, z2: int | float) -> 'Geometry':
+        wasm_call('geometry_select_tris', self._handle,
+            float(x1), float(y1), float(z1), float(x2), float(y2), float(z2))
         return self
     
-    def create_vertex(self, x: int | float, y: int | float, z: int | float,
+    def create_vtx(self, x: int | float, y: int | float, z: int | float,
     ) -> 'Geometry':
-        wasm_call('geometry_create_vertex', self._handle,
+        wasm_call('geometry_create_vtx', self._handle,
             float(x), float(y), float(z))
         return self
     
-    def delete_vertex(self, vertex: int) -> 'Geometry':
-        wasm_call('geometry_delete_vertex', self._handle, vertex)
+    def delete_vtx(self, vtx: int) -> 'Geometry':
+        wasm_call('geometry_delete_vtx', self._handle, vtx)
         return self
     
-    def delete_vertices(self) -> 'Geometry':
-        wasm_call('geometry_delete_vertices', self._handle)
+    def delete_vtcs(self) -> 'Geometry':
+        wasm_call('geometry_delete_vtcs', self._handle)
         return self
     
-    def create_triangle(self, a: int, b: int, c: int) -> 'Geometry':
-        wasm_call('geometry_create_triangle', self._handle, a, b, c)
+    def create_tri(self, a: int, b: int, c: int) -> 'Geometry':
+        wasm_call('geometry_create_tri', self._handle, a, b, c)
         return self
     
-    def delete_triangle(self, triangle: int) -> 'Geometry':
-        wasm_call('geometry_delete_triangle', self._handle, triangle)
+    def delete_tri(self, tri: int) -> 'Geometry':
+        wasm_call('geometry_delete_tri', self._handle, tri)
         return self
     
-    def delete_triangles(self) -> 'Geometry':
-        wasm_call('geometry_delete_triangles', self._handle)
+    def delete_tris(self) -> 'Geometry':
+        wasm_call('geometry_delete_tris', self._handle)
         return self
     
-    def delete_stray_vertices(self) -> 'Geometry':
-        wasm_call('geometry_delete_stray_vertices', self._handle)
+    def delete_stray_vtcs(self) -> 'Geometry':
+        wasm_call('geometry_delete_stray_vtcs', self._handle)
         return self
     
     def extrude(self, x: int | float, y: int | float, z: int | float
     ) -> 'Geometry':
-        wasm_call('geometry_extrude', self._handle, float(x), float(y),
-            float(z))
+        wasm_call('geometry_extrude', self._handle,
+            float(x), float(y), float(z))
         return self
     
     def pack(self) -> PackedGeometry:
