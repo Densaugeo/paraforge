@@ -199,7 +199,7 @@ impl Geometry {
   }
   
   // Apply a translation
-  pub fn t(&mut self, x: f64, y: f64, z: f64) -> &mut Self {
+  pub fn translate(&mut self, x: f64, y: f64, z: f64) -> &mut Self {
     let translation = V3::new(x, y, z);
     
     for vtx in &mut self.vtcs {
@@ -210,7 +210,7 @@ impl Geometry {
   }
   
   // Apply a scale
-  pub fn s(&mut self, x: f64, y: f64, z: f64) -> &mut Self {
+  pub fn scale(&mut self, x: f64, y: f64, z: f64) -> &mut Self {
     let scale = V3::new(x, y, z);
     
     for vtx in &mut self.vtcs {
@@ -777,7 +777,7 @@ fn geometry_translate(handle: usize, x: f64, y: f64, z: f64) -> FFIResult<()> {
   let mut geometries = lock(&GEOMETRIES)?;
   if handle >= geometries.len() { return Err(ErrorCode::HandleOutOfBounds) };
   
-  geometries[handle].t(x, y, z);
+  geometries[handle].translate(x, y, z);
   
   Ok(())
 }
@@ -787,7 +787,7 @@ fn geometry_scale(handle: usize, x: f64, y: f64, z: f64) -> FFIResult<()> {
   let mut geometries = lock(&GEOMETRIES)?;
   if handle >= geometries.len() { return Err(ErrorCode::HandleOutOfBounds) };
   
-  geometries[handle].s(x, y, z);
+  geometries[handle].scale(x, y, z);
   
   Ok(())
 }
