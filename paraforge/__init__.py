@@ -88,6 +88,9 @@ class Mesh:
     def new_prim(self, packed_geometry: 'PackedGeometry', material: 'Material'):
         wasm_call('new_prim_in_mesh', self._handle, packed_geometry.handle,
             material.handle)
+    
+    def get_prim_count(self) -> int:
+        return wasm_call('mesh_get_prim_count', self._handle)
 
 
 class PackedGeometry():
@@ -228,6 +231,22 @@ class Geometry:
         wasm_call('geometry_delete_stray_vtcs', self._handle)
         return self
     
+    def set_vtx(self, vtx: int, x: int | float, y: int | float, z: int | float
+    ) -> 'Geometry':
+        wasm_call('geometry_set_vtx', self._handle,
+            float(x), float(y), float(z))
+        return self
+    
+    def set_tri(self, tri: int, a: int, b: int, c: int) -> 'Geometry':
+        wasm_call('geometry_set_tri', self._handle, a, b, c)
+        return self
+    
+    def get_vtx_count(self) -> int:
+        return wasm_call('geometry_get_vtx_count', self._handle)
+    
+    def get_tri_count(self) -> int:
+        return wasm_call('geometry_get_tri_count', self._handle)
+    
     def extrude(self, x: int | float, y: int | float, z: int | float
     ) -> 'Geometry':
         wasm_call('geometry_extrude', self._handle,
@@ -289,3 +308,15 @@ def init():
 
 def serialize() -> bytes:
     return bytes(wasm_call('serialize'))
+
+def get_scene_count() -> int:
+    return wasm_call('get_scene_count')
+
+def get_node_count() -> int:
+    return wasm_call('get_node_count')
+
+def get_mesh_count() -> int:
+    return wasm_call('get_mesh_count')
+
+def get_material_count() -> int:
+    return wasm_call('get_material_count')

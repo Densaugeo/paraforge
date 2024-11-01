@@ -613,6 +613,8 @@ fn init() -> FFIResult<()> {
   let glb_json = glb_json_option.as_mut().ok_or(
     ErrorCode::NotInitialized)?;
   
+  let mut glb_bin = lock(&GLB_BIN)?;
+  
   glb_json.asset.generator = Some(String::from("emg v0.1.0"));
   glb_json.asset.min_version = Some(String::from("2.0"));
   
@@ -633,6 +635,8 @@ fn init() -> FFIResult<()> {
     extras: Default::default(),
   });
   glb_json.scene = Some(scene_handle);
+  
+  glb_bin.clear();
   
   return Ok(());
 }
@@ -747,6 +751,66 @@ fn new_prim_in_mesh(mesh: usize, packed_geometry: usize, material: usize)
   
   glb_json.meshes[mesh].primitives.push(prim);
   return Ok(glb_json.meshes[mesh].primitives.len() - 1);
+}
+
+#[ffi]
+fn get_scene_count() -> FFIResult<usize> {
+  // This lock must be saved in a variable before it can be used.
+  // (lock(&GLB_JSON)?).as_ref()... does not compile. This snippet cannot be
+  // wrapped in a function
+  let mut glb_json_option = lock(&GLB_JSON)?;
+  let glb_json = glb_json_option.as_mut().ok_or(
+    ErrorCode::NotInitialized)?;
+  
+  Ok(glb_json.scenes.len())
+}
+
+#[ffi]
+fn get_node_count() -> FFIResult<usize> {
+  // This lock must be saved in a variable before it can be used.
+  // (lock(&GLB_JSON)?).as_ref()... does not compile. This snippet cannot be
+  // wrapped in a function
+  let mut glb_json_option = lock(&GLB_JSON)?;
+  let glb_json = glb_json_option.as_mut().ok_or(
+    ErrorCode::NotInitialized)?;
+  
+  Ok(glb_json.nodes.len())
+}
+
+#[ffi]
+fn get_mesh_count() -> FFIResult<usize> {
+  // This lock must be saved in a variable before it can be used.
+  // (lock(&GLB_JSON)?).as_ref()... does not compile. This snippet cannot be
+  // wrapped in a function
+  let mut glb_json_option = lock(&GLB_JSON)?;
+  let glb_json = glb_json_option.as_mut().ok_or(
+    ErrorCode::NotInitialized)?;
+  
+  Ok(glb_json.meshes.len())
+}
+
+#[ffi]
+fn mesh_get_prim_count(handle: u32) -> FFIResult<usize> {
+  // This lock must be saved in a variable before it can be used.
+  // (lock(&GLB_JSON)?).as_ref()... does not compile. This snippet cannot be
+  // wrapped in a function
+  let mut glb_json_option = lock(&GLB_JSON)?;
+  let glb_json = glb_json_option.as_mut().ok_or(
+    ErrorCode::NotInitialized)?;
+  
+  Ok(glb_json.meshes[handle as usize].primitives.len())
+}
+
+#[ffi]
+fn get_material_count() -> FFIResult<usize> {
+  // This lock must be saved in a variable before it can be used.
+  // (lock(&GLB_JSON)?).as_ref()... does not compile. This snippet cannot be
+  // wrapped in a function
+  let mut glb_json_option = lock(&GLB_JSON)?;
+  let glb_json = glb_json_option.as_mut().ok_or(
+    ErrorCode::NotInitialized)?;
+  
+  Ok(glb_json.materials.len())
 }
 
 #[ffi]
@@ -873,6 +937,52 @@ fn geometry_delete_stray_vtcs(handle: usize) -> FFIResult<()> {
   geometries[handle].delete_stray_vtcs();
   
   Ok(())
+}
+
+#[ffi]
+fn geometry_set_vtx(handle: usize, vtx: u32, x: f64, y: f64, z: f64)
+-> FFIResult<()> {
+  let mut geometries = lock(&GEOMETRIES)?;
+  if handle >= geometries.len() { return Err(ErrorCode::HandleOutOfBounds) };
+  
+  if vtx >= geometries[handle].vtcs.len() as u32 {
+    return Err(ErrorCode::VtxOutOfBounds)
+  };
+  
+  geometries[handle].vtcs[vtx as usize] = V3::new(x, y, z);
+  
+  Ok(())
+}
+
+#[ffi]
+fn geometry_set_tri(handle: usize, tri: u32, a: u32, b: u32, c: u32)
+-> FFIResult<()> {
+  let mut geometries = lock(&GEOMETRIES)?;
+  if handle >= geometries.len() { return Err(ErrorCode::HandleOutOfBounds) };
+  
+  if tri >= geometries[handle].tris.len() as u32 {
+    return Err(ErrorCode::TriOutOfBounds)
+  };
+  
+  geometries[handle].tris[tri as usize] = [a, b, c];
+  
+  Ok(())
+}
+
+#[ffi]
+fn geometry_get_vtx_count(handle: usize) -> FFIResult<usize> {
+  let geometries = lock(&GEOMETRIES)?;
+  if handle >= geometries.len() { return Err(ErrorCode::HandleOutOfBounds) };
+  
+  Ok(geometries[handle].vtcs.len())
+}
+
+#[ffi]
+fn geometry_get_tri_count(handle: usize) -> FFIResult<usize> {
+  let geometries = lock(&GEOMETRIES)?;
+  if handle >= geometries.len() { return Err(ErrorCode::HandleOutOfBounds) };
+  
+  Ok(geometries[handle].tris.len())
 }
 
 #[ffi]

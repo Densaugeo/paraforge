@@ -3,6 +3,8 @@ from pathlib import Path
 
 import pytest
 
+from paraforge import *
+
 ####################
 # Setup / Teardown #
 ####################
@@ -96,3 +98,25 @@ def test_demo():
             'fails here, it usually means the generated .glb is ' + \
             'funtionally identical but JSON values are printed in a ' + \
             'different order'
+
+@pytest.mark.parametrize('vtx', [
+    (0, 0, 0),
+    (1, 2, 3),
+    (-1e+6, 0, 1e+6),
+])
+def test_manual_vtcs(vtx: tuple[float, float, float]):
+    init()
+    
+    geometry = Geometry()
+    assert geometry.get_vtx_count() == 0
+    geometry.create_vtx(*vtx)
+    assert geometry.get_vtx_count() == 1
+    
+    node = Node('Test Node')
+    mesh = node.new_mesh('Test Mesh')
+    mesh.new_prim(geometry.pack(), material=Material('Plain', '#888'))
+    
+    json_, bin_ = parse_glb(serialize())
+    
+    assert len(bin_) == 12
+    assert bin_ == struct.pack('<fff', *vtx)
