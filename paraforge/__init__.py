@@ -1,3 +1,5 @@
+import math
+
 try:
     import wasmtime
     micropython = False
@@ -56,37 +58,148 @@ class Node:
     @property
     def handle(self): return self._handle
     
-    def __init__(self, name: str = ''):
+    @property
+    def translation(self): return self._translation
+    @translation.setter
+    def translation(self, v: [float, float, float]):
+        wasm_call('node_set_translation', self._handle, *v)
+        self._translation = v
+    
+    def t(self, x: int | float, y: int | float, z: int | float) -> 'Node':
+        if self._translation is None:
+            self._translation = [0.0, 0.0, 0.0]
+        
+        self._translation[0] += float(x)
+        self._translation[1] += float(y)
+        self._translation[2] += float(z)
+        wasm_call('node_set_translation', self._handle, *self._translation)
+        return self
+    
+    def tx(self, v: int | float) -> 'Node': return self.t(v  , 0.0, 0.0)
+    def ty(self, v: int | float) -> 'Node': return self.t(0.0, v  , 0.0)
+    def tz(self, v: int | float) -> 'Node': return self.t(0.0, 0.0, v  )
+    
+    @property
+    def quaternion(self): return self._quaternion
+    @quaternion.setter
+    def quaternion(self, v: [float, float, float, float]):
+        wasm_call('node_set_rotation', self._handle, *v)
+    
+    def r(self, x: int | float, y: int | float, z: int | float) -> 'Node':
+        # Constructions of euler rotation quaternion largely taken from
+        # https://en.wikipedia.org/wiki/Conversion_between_quaternions_and_Euler_angles
+        cr = math.cos(x/2) # x = roll
+        sr = math.sin(x/2)
+        cp = math.cos(y/2) # y = pitch
+        sp = math.sin(y/2)
+        cy = math.cos(z/2) # z = yaw
+        sy = math.sin(z/2)
+        
+        new_quaternion = [
+            sr * cp * cy - cr * sp * sy,
+            cr * sp * cy + sr * cp * sy,
+            cr * cp * sy - sr * sp * cy,
+            cr * cp * cy + sr * sp * sy,
+        ]
+        
+        # Multiplication of quaternions taken from
+        # https://math.libretexts.org/Bookshelves/Abstract_and_Geometric_Algebra/Introduction_to_Groups_and_Geometries_(Lyons)/01%3A_Preliminaries/1.02%3A_Quaternions . Variable names chosen to match literature used
+        b, c, d, a = self._quaternion or [0.0, 0.0, 0.0, 1.0]
+        b_, c_, d_, a_ = new_quaternion
+        
+        self._quaternion = [
+            a*b_ + b*a_ + c*d_ - d*c_,
+            a*c_ + c*a_ - b*d_ + d*b_,
+            a*d_ + d*a_ + b*c_ - c*b_,
+            
+            a*a_ - b*b_ - c*c_ - d*d_,
+        ]
+        
+        wasm_call('node_set_rotation', self._handle, *self._quaternion)
+        return self
+    
+    def rx(self, v: int | float) -> 'Node': return self.r(v  , 0.0, 0.0)
+    def ry(self, v: int | float) -> 'Node': return self.r(0.0, v  , 0.0)
+    def rz(self, v: int | float) -> 'Node': return self.r(0.0, 0.0, v  )
+    
+    @property
+    def scale(self): return self._scale
+    @scale.setter
+    def scale(self, v: [float, float, float]):
+        wasm_call('node_set_scale', self._handle, *v)
+    
+    def s(self, x: int | float, y: int | float, z: int | float) -> 'Node':
+        if self._scale is None:
+            self._scale = [1.0, 1.0, 1.0]
+        
+        self._scale[0] *= float(x)
+        self._scale[1] *= float(y)
+        self._scale[2] *= float(z)
+        wasm_call('node_set_scale', self._handle, *self._scale)
+        return self
+    
+    def sx(self, v: int | float) -> 'Node': return self.s(v  , 1.0, 1.0)
+    def sy(self, v: int | float) -> 'Node': return self.s(1.0, v  , 1.0)
+    def sz(self, v: int | float) -> 'Node': return self.s(1.0, 1.0, v  )
+    def sa(self, v: int | float) -> 'Node': return self.s(v  , v  , v  )
+    
+    @property
+    def matrix(self): return self._matrix
+    @matrix.setter
+    def matrix(self, v: [float, float, float, float, float, float, float, float,
+    float, float, float, float, float, float, float, float]):
+        wasm_call('node_set_matrix', self._handle, *v)
+    
+    @property
+    def mesh(self): return self._mesh
+    @mesh.setter
+    def mesh(self, v: 'Mesh'):
+        wasm_call('node_set_mesh', self._handle, v.handle)
+        self._mesh = v
+    
+    def __init__(self, name: str = '', root: bool = False,
+    mesh: 'Mesh' = None):
         assert len(name) <= 64
         
         self._name = name
+        self._translation = None
+        self._quaternion = None
+        self._scale = None
+        self._matrix = None
+        self._mesh = None
         
         write_string(0, name)
-        self._handle = wasm_call('new_node_in_scene', 0)
+        self._handle = wasm_call('node_new')
+        
+        # Must assign through constructor to attach mesh. ._handle must already
+        # be present
+        if mesh is not None:
+            self.mesh = mesh
+        
+        if root:
+            wasm_call('scene_add_node', 0, self._handle)
     
-    def new_mesh(self, name: str = '') -> 'Mesh':
-        return Mesh(self, name)
+    def add(self, node: 'Node') -> 'Node':
+        wasm_call('node_add_node', self._handle, node.handle)
+        return self
 
 
 class Mesh:
     @property
     def name(self): return self._name
     @property
-    def node(self): return self._node
-    @property
     def handle(self): return self._handle
     
-    def __init__(self, node: Node, name: str = ''):
+    def __init__(self, name: str = ''):
         assert len(name) <= 64
         
         self._name = name
-        self._node = node
         
         write_string(0, name)
-        self._handle = wasm_call('new_mesh_in_node', self._node.handle)
+        self._handle = wasm_call('mesh_new')
     
     def new_prim(self, packed_geometry: 'PackedGeometry', material: 'Material'):
-        wasm_call('new_prim_in_mesh', self._handle, packed_geometry.handle,
+        wasm_call('mesh_add_prim', self._handle, packed_geometry.handle,
             material.handle)
     
     def get_prim_count(self) -> int:
@@ -233,12 +346,12 @@ class Geometry:
     
     def set_vtx(self, vtx: int, x: int | float, y: int | float, z: int | float
     ) -> 'Geometry':
-        wasm_call('geometry_set_vtx', self._handle,
+        wasm_call('geometry_set_vtx', self._handle, vtx,
             float(x), float(y), float(z))
         return self
     
     def set_tri(self, tri: int, a: int, b: int, c: int) -> 'Geometry':
-        wasm_call('geometry_set_tri', self._handle, a, b, c)
+        wasm_call('geometry_set_tri', self._handle, tri, a, b, c)
         return self
     
     def get_vtx_count(self) -> int:
@@ -304,6 +417,13 @@ def wasm_call(function: str, *args):
         return memory.get_buffer_ptr(store, value, tag)
 
 def init():
+    # String transports need to be exercised after start, otherwise attempting
+    # to write a string of length 0 will cause the string buffer to be at
+    # address 0, and packing that into a pointer causes it to be interpreted as
+    # as an error. This cannot be 'properly' fixed until multi return is usable
+    for i in range(4):
+        write_string(i, '.')
+    
     return wasm_call('init')
 
 def serialize() -> bytes:

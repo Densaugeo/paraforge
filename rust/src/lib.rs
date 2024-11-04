@@ -667,7 +667,7 @@ roughness: f64) -> FFIResult<usize> {
 }
 
 #[ffi]
-fn new_node_in_scene(scene: usize) -> FFIResult<usize> {
+fn scene_add_node(scene: usize, node: usize) -> FFIResult<()> {
   // This lock must be saved in a variable before it can be used.
   // (lock(&GLB_JSON)?).as_ref()... does not compile. This snippet cannot be
   // wrapped in a function
@@ -679,18 +679,58 @@ fn new_node_in_scene(scene: usize) -> FFIResult<usize> {
     return Err(ErrorCode::HandleOutOfBounds);
   }
   
+  if node >= glb_json.nodes.len() {
+    return Err(ErrorCode::HandleOutOfBounds);
+  }
+  
+  glb_json.scenes[scene].nodes.push(gltf_json::Index::new(node as u32));
+  
+  return Ok(());
+}
+
+#[ffi]
+fn node_new() -> FFIResult<usize> {
+  let name = get_string_transport(0)?;
+  
+  // This lock must be saved in a variable before it can be used.
+  // (lock(&GLB_JSON)?).as_ref()... does not compile. This snippet cannot be
+  // wrapped in a function
+  let mut glb_json_option = lock(&GLB_JSON)?;
+  let glb_json = glb_json_option.as_mut().ok_or(
+    ErrorCode::NotInitialized)?;
+  
   let mut node = gltf_json::Node::default();
-  node.name = Some(String::from("Fortress Wall Battlement"));
+  node.name = Some(name);
   
   let handle = glb_json.push(node);
-  glb_json.scenes[scene].nodes.push(handle);
   return Ok(handle.value());
 }
 
 #[ffi]
-fn new_mesh_in_node(node: usize) -> FFIResult<usize> {
-  let name = get_string_transport(0)?;
+fn node_add_node(node_1: usize, node_2: usize) -> FFIResult<()> {
+  // This lock must be saved in a variable before it can be used.
+  // (lock(&GLB_JSON)?).as_ref()... does not compile. This snippet cannot be
+  // wrapped in a function
+  let mut glb_json_option = lock(&GLB_JSON)?;
+  let glb_json = glb_json_option.as_mut().ok_or(
+    ErrorCode::NotInitialized)?;
   
+  if node_1 >= glb_json.nodes.len() {
+    return Err(ErrorCode::HandleOutOfBounds);
+  }
+  
+  if node_2 >= glb_json.nodes.len() {
+    return Err(ErrorCode::HandleOutOfBounds);
+  }
+  
+  glb_json.nodes[node_1].children.get_or_insert(Vec::new())
+    .push(gltf_json::Index::new(node_2 as u32));
+  
+  return Ok(());
+}
+
+#[ffi]
+fn node_set_translation(node: usize, x: f32, y: f32, z: f32) -> FFIResult<()> {
   // This lock must be saved in a variable before it can be used.
   // (lock(&GLB_JSON)?).as_ref()... does not compile. This snippet cannot be
   // wrapped in a function
@@ -702,6 +742,104 @@ fn new_mesh_in_node(node: usize) -> FFIResult<usize> {
     return Err(ErrorCode::HandleOutOfBounds);
   }
   
+  glb_json.nodes[node].translation = Some([x, y, z]);
+  
+  return Ok(());
+}
+
+#[ffi]
+fn node_set_rotation(node: usize, x: f32, y: f32, z: f32, w: f32)
+-> FFIResult<()> {
+  // This lock must be saved in a variable before it can be used.
+  // (lock(&GLB_JSON)?).as_ref()... does not compile. This snippet cannot be
+  // wrapped in a function
+  let mut glb_json_option = lock(&GLB_JSON)?;
+  let glb_json = glb_json_option.as_mut().ok_or(
+    ErrorCode::NotInitialized)?;
+  
+  if node >= glb_json.nodes.len() {
+    return Err(ErrorCode::HandleOutOfBounds);
+  }
+  
+  glb_json.nodes[node].rotation = Some(gltf_json::scene::UnitQuaternion(
+    [x, y, z, w]));
+  
+  return Ok(());
+}
+
+#[ffi]
+fn node_set_scale(node: usize, x: f32, y: f32, z: f32) -> FFIResult<()> {
+  // This lock must be saved in a variable before it can be used.
+  // (lock(&GLB_JSON)?).as_ref()... does not compile. This snippet cannot be
+  // wrapped in a function
+  let mut glb_json_option = lock(&GLB_JSON)?;
+  let glb_json = glb_json_option.as_mut().ok_or(
+    ErrorCode::NotInitialized)?;
+  
+  if node >= glb_json.nodes.len() {
+    return Err(ErrorCode::HandleOutOfBounds);
+  }
+  
+  glb_json.nodes[node].scale = Some([x, y, z]);
+  
+  return Ok(());
+}
+
+#[ffi]
+fn node_set_matrix(node: usize, m0: f32, m1: f32, m2: f32, m3: f32, m4: f32,
+m5: f32, m6: f32, m7: f32, m8: f32, m9: f32, m10: f32, m11: f32, m12: f32,
+m13: f32, m14: f32, m15: f32) -> FFIResult<()> {
+  // This lock must be saved in a variable before it can be used.
+  // (lock(&GLB_JSON)?).as_ref()... does not compile. This snippet cannot be
+  // wrapped in a function
+  let mut glb_json_option = lock(&GLB_JSON)?;
+  let glb_json = glb_json_option.as_mut().ok_or(
+    ErrorCode::NotInitialized)?;
+  
+  if node >= glb_json.nodes.len() {
+    return Err(ErrorCode::HandleOutOfBounds);
+  }
+  
+  glb_json.nodes[node].matrix = Some([
+    m0, m1, m2, m3, m4, m5, m6, m7, m8, m9, m10, m11, m12, m13, m14, m15,
+  ]);
+  
+  return Ok(());
+}
+
+#[ffi]
+fn node_set_mesh(node: usize, mesh: usize) -> FFIResult<()> {
+  // This lock must be saved in a variable before it can be used.
+  // (lock(&GLB_JSON)?).as_ref()... does not compile. This snippet cannot be
+  // wrapped in a function
+  let mut glb_json_option = lock(&GLB_JSON)?;
+  let glb_json = glb_json_option.as_mut().ok_or(
+    ErrorCode::NotInitialized)?;
+  
+  if node >= glb_json.nodes.len() {
+    return Err(ErrorCode::HandleOutOfBounds);
+  }
+  
+  if mesh >= glb_json.meshes.len() {
+    return Err(ErrorCode::HandleOutOfBounds);
+  }
+  
+  glb_json.nodes[node].mesh = Some(gltf_json::Index::new(mesh as u32));
+  
+  return Ok(());
+}
+
+#[ffi]
+fn mesh_new() -> FFIResult<usize> {
+  let name = get_string_transport(0)?;
+  
+  // This lock must be saved in a variable before it can be used.
+  // (lock(&GLB_JSON)?).as_ref()... does not compile. This snippet cannot be
+  // wrapped in a function
+  let mut glb_json_option = lock(&GLB_JSON)?;
+  let glb_json = glb_json_option.as_mut().ok_or(
+    ErrorCode::NotInitialized)?;
+  
   let handle = glb_json.push(gltf_json::Mesh {
     name: Some(String::from(name)),
     primitives: Vec::new(),
@@ -709,12 +847,11 @@ fn new_mesh_in_node(node: usize) -> FFIResult<usize> {
     extensions: None,
     extras: Default::default(),
   });
-  glb_json.nodes[node].mesh = Some(handle);
   return Ok(handle.value());
 }
 
 #[ffi]
-fn new_prim_in_mesh(mesh: usize, packed_geometry: usize, material: usize)
+fn mesh_add_prim(mesh: usize, packed_geometry: usize, material: usize)
 -> FFIResult<usize> {
   // This lock must be saved in a variable before it can be used.
   // (lock(&GLB_JSON)?).as_ref()... does not compile. This snippet cannot be

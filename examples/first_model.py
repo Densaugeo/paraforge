@@ -8,7 +8,7 @@ def gen_first_model():
     black_block = Geometry.Cube().s(0.5, 0.25, 0.3).t(0, 0.25, 0.9)
     black_block.select_tris(-10, -10, 0.5, 10, 10, 0.7).delete_tris()
     
-    node = Node('Fortress Wall Battlement')
-    mesh = node.new_mesh('Fortress Wall Battlement')
-    mesh.new_prim(red_block.pack(), material=red)
-    mesh.new_prim(black_block.pack(), material=black)
+    node = Node('Fortress Wall Battlement', root=True)
+    node.mesh = Mesh('Fortress Wall Battlement')
+    node.mesh.new_prim(red_block.pack(), material=red)
+    node.mesh.new_prim(black_block.pack(), material=black)

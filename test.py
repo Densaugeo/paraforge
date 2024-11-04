@@ -112,11 +112,15 @@ def test_manual_vtcs(vtx: tuple[float, float, float]):
     geometry.create_vtx(*vtx)
     assert geometry.get_vtx_count() == 1
     
-    node = Node('Test Node')
-    mesh = node.new_mesh('Test Mesh')
-    mesh.new_prim(geometry.pack(), material=Material('Plain', '#888'))
-    
+    geometry.pack()
     json_, bin_ = parse_glb(serialize())
     
     assert len(bin_) == 12
     assert bin_ == struct.pack('<fff', *vtx)
+
+# Making an unnamed Node previously triggered a bug in which string transports
+# attempted to use address 0, causing the pointer to be misinterpreted as an
+# error
+def test_unnamed_node():
+    init()
+    Node()
