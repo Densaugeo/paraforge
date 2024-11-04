@@ -1,4 +1,4 @@
-import os, subprocess, json, struct
+import os, sys, subprocess, json, struct
 from pathlib import Path
 
 import pytest
@@ -80,7 +80,7 @@ def parse_glb(glb: bytes) -> (object, bytes):
 
 def test_demo():
     result = subprocess.run([
-        'python', '-m', 'paraforge', '../examples/first_model.py',
+        sys.executable, '-m', 'paraforge', '../examples/first_model.py',
         'first_model',
     ], capture_output=True)
     
