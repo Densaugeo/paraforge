@@ -551,6 +551,7 @@ self.execute = args => {
   return python({ code: `
     with open('/paraforge/string_transfer') as f:
         module = __import__(f.read())
+    module.init()
     module.gen_${generator}(${passthrough.join(', ')})
   ` })
 }

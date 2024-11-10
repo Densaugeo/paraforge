@@ -26,8 +26,6 @@ Evaluation of a Python-Rust architecture for a parametric modeling project.
 - UI
   * Adjust parameters / model and file names
   * Handle multiple models at once. I'm really going to need that for testing
-- Core functions
-  * Test multiple runs in one wasm instance
 
 ## License
 
