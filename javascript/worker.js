@@ -1,3 +1,15 @@
+const REGEX_SIGNATURE = /^def\s+gen_(\p{XID_Continue}+)\s*\(([\S\s]*?)\):/gmu
+const REGEX_PARAMETER = new RegExp(
+  // Name (any valid identifier)
+  /(\p{XID_Start}\p{XID_Continue}+)/.source +
+  
+  // Type (optional, currently only identifiers accepted)
+  /(?::(\p{XID_Start}\p{XID_Continue}+))?/.source +
+  
+  // Default value (optional, no validation currently)
+  /(?:=([\S\s]+))?/.source,
+'u')
+
 /**
  * Sends log event, which main thread will print to console if priority <=
  * verbosity
@@ -534,6 +546,42 @@ self.python = async args => {
   } finally {
     mp_instance.exports.free(mystery_pointer)
   }
+}
+
+self.inspect = args => {
+  const { path } = args
+  const result = []
+  
+  // Experiment: Can I get the gen function sigs from the source?
+  let source = UTF8Decoder.decode(VFS[path])
+  
+  // Remove any comments from the source code
+  source = source.replace(/#.*$/gm, '')
+  
+  for(const signature of source.matchAll(REGEX_SIGNATURE)) {
+    
+    // Strip all white space, including internal white space, before splitting
+    let params = signature[2].replace(/\s/g,'').split(',')
+    
+    // Edge case: A list of Python parameters can end in a comma, so that the
+    // last paramter is blank. This is only permitted once at the end of the
+    // parameters
+    if(params.at(-1) === '') params.splice(-1, 1)
+    
+    result.push({ name: signature[1], params: params.map(param => {
+      const [_, name, type, default_] = param.match(REGEX_PARAMETER)
+      
+      return { name, type, default: default_ }
+    }) })
+    
+    for(const param of params) {
+      const [_, name, type, default_] = param.match(REGEX_PARAMETER)
+      
+      console.log(`${name} ${type} ${default_}`)
+    }
+  }
+  
+  return result
 }
 
 self.execute = args => {

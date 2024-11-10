@@ -214,7 +214,26 @@ export class Paraforge extends EventTarget {
   }
   
   /**
-   * Generate a model. Automatically loads the specified script first. For
+   * Inspect a paraforge script and return an array of model generator names and
+   * parameters.
+   * 
+   * @param script_url {string} URL of Python module to import
+   */
+  async inspect(script_url) {
+    const script_filename = script_url.split('/').slice(-1)[0]
+    if(script_filename.slice(-3) !== '.py') {
+      throw new Error('Paraforge script filenames must end in .py')
+    }
+    
+    if(!await this.check_file_exists('/' + script_filename)) {
+      await this.add_file('/' + script_filename, script_url)
+    }
+    
+    return await this._thread_call('inspect', { path: '/' + script_filename })
+  }
+  
+  /**
+   * Generate a model. The specified script must already be loaded. For
    * use cases where more control is needed, the lower-level function .execute()
    * is recommended.
    * 
@@ -226,17 +245,10 @@ export class Paraforge extends EventTarget {
    */
   async gen(script_url, generator, python_args=[], python_kwargs={}) {
     const script_filename = script_url.split('/').slice(-1)[0]
-    if(script_filename.slice(-3) !== '.py') {
-      throw new Error('Paraforge script filenames must end in .py')
-    }
     
     const module_name = script_filename.slice(0, -3)
     if(module_name.includes('.')) {
       throw new Error('Paraforge script filenames must have exactly one period')
-    }
-    
-    if(!await this.check_file_exists('/' + script_filename)) {
-      await this.add_file('/' + script_filename, script_url)
     }
     
     await this.execute(module_name, generator, python_args, python_kwargs)
