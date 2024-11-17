@@ -33,8 +33,12 @@ viewer.focus()
 
 await viewer.init()
 viewer.paraforge.on('stdout', e => console.log(e.line))
-console.log(await viewer.paraforge.inspect('/examples/feature_tests.py'))
-await viewer.gen('/examples/feature_tests.py', 'manual_vtcs')
-//await viewer.gen('/examples/first_model.py', 'first_model')
+//await viewer.paraforge.add_file('/first_model.py',
+//  '/examples/first_model.py')
+//await viewer.gen('first_model', 'first_model')
+await viewer.paraforge.add_file('/feature_tests.py',
+  '/examples/feature_tests.py')
+await viewer.gen('feature_tests', 'manual_vtcs')
+
 </script>
 </html>

@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import * as THREE_Den from './three.Den.js';
 import * as helpers from './helpers.js'
+import * as paraforge from './paraforge.js'
 
 // Collection of shaders to switch between. The String 'original' designates
 // materials orignally defined on each object individually
@@ -247,6 +248,138 @@ export const shaderPanel = fE('den-panel', {
 ])
 shaderPanel.toggles = shaderPanel.querySelector('den-shader-ui').toggles
 
+export class DenGeneratorUI extends HTMLElement {
+  /** @type {paraforge.Paraforge | null} */
+  paraforge = null
+  
+  /** @type {HTMLInputElement | null} */
+  _script_input = null
+  
+  /** @type {string} */
+  get script() { return this._script_input?.value ?? '' }
+  set script(v) { if(this._script_input) this._script_input.value = v }
+  
+  /** @type {HTMLInputElement | null} */
+  _generator_input = null
+  
+  /** @type {string} */
+  get generator() { return this._generator_input?.value ?? '' }
+  set generator(v) { if(this._generator_input) this._generator_input.value = v }
+  
+  constructor() {
+    super()
+    
+    this.shadow = this.attachShadow({ mode: 'closed' })
+    
+    const sheet = new CSSStyleSheet()
+    sheet.replaceSync(`
+    table {
+      border-spacing: 0;
+    }
+    
+    input {
+      color: #0ff;
+    }
+    `)
+    this.shadow.adoptedStyleSheets = [sheet]
+  }
+  
+  execute() {
+    this.paraforge.execute(
+      this.script,
+      this.generator,
+      Array.from(this.shadow.querySelectorAll('input.parameter').values()
+        .map(el => el.value)),
+    )
+  }
+  
+  async connectedCallback() {
+    await this.render()
+    
+    this.shadow.on('change', async (e) => {
+      // e.target will become null after await
+      const name = e.target.name
+      
+      if(['script', 'generator'].includes(name)) await this.render()
+      
+      // Should be done second, so that if a new generator is set the 3D view
+      // will be updated
+      if(name !== 'script') this.execute()
+    })
+    
+    // Disable all keyboard shortcuts inside textboxes, and arrow keys inside
+    // sliders
+    this.shadow.on('keydown', e => {
+      if(e.target.type === 'text' || e.target.type === 'number') {
+        e.stopPropagation()
+      }
+      
+      if(e.target.type === 'range' && 37 <= e.keyCode && e.keyCode <= 40) {
+        e.stopPropagation()
+      }
+    })
+  }
+  
+  async render() {
+    const table = fE('table')
+    
+    const script_list = this.paraforge ? await this.paraforge.list_scripts()
+      : []
+    
+    table.append(fE('tr', [
+      fE('td', ['Script:']),
+      fE('td', [
+        this._script_input = fE('input', { name: 'script',
+          list: 'available-scripts', value: this.script }),
+        fE('datalist', { id: 'available-scripts' },
+          script_list.map(path => fE('option', { value: path }))),
+      ]),
+    ]))
+    
+    const script_info = (this.script && this.paraforge)
+      ? await this.paraforge.inspect(this.script) : {}
+    const generators = Object.keys(script_info)
+    const generator = generators.includes(this.generator) ? this.generator : ''
+    
+    table.append(fE('tr', [
+      fE('td', ['Generator:']),
+      fE('td', [
+        this._generator_input = fE('input', { name: 'generator',
+          list: 'available-generators', value: generator}),
+        fE('datalist', { id: 'available-generators' },
+          generators.map(value => fE('option', { value }))),
+      ]),
+    ]))
+    
+    if(generator) {
+      script_info[generator].forEach(v => {
+        if(v.type !== 'int' && v.type != 'float')
+          throw new Error(`Unsupported parameter type "${type}"`)
+        const type = 'number'
+        
+        table.append(fE('tr', [
+          fE('td', [v.name + ':']),
+          fE('td', [fE('input', { type, value: v.default,
+            className: 'parameter' })]),
+        ]))
+      })
+    }
+    
+    this.shadow.replaceChildren(table)
+  }
+}
+customElements.define('den-generator-ui', DenGeneratorUI)
+
+/** @type helpers.DenPanel */
+export const generatorPanel = fE('den-panel', {
+  heading: 'Generator Settings',
+  command_icon: 'settings.svg',
+  command_tooltip: 'Generator Settings',
+}, [
+  fE('den-generator-ui', { slot: 'content' }),
+])
+generatorPanel.content = generatorPanel.querySelector('den-generator-ui')
+
 /** @type helpers.DenPanel */
 export const inspectorPanel = fE('den-panel', {
   heading: 'Inspector',
@@ -280,7 +413,7 @@ inspectorPanel.selectHandler = e => {
   // Empties array in place
   inspector_actions.splice(0)
   
-  Object.keys(e.selection.controls).forEach((v, i, a) => {
+  Object.keys(e.selection.controls).forEach((v, i) => {
     inspector_actions[i] = inspector_content.fE('div', {
       textContent: (i + 1) +  ' - ' + v,
       tabIndex: 0,

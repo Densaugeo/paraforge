@@ -4,9 +4,9 @@ from paraforge import *
 
 π = pi
 
-def gen_manual_vtcs(tooth_count: int = 8, pitch_radius: float = 1.0,
-pressure_angle: float = π/9, backlash: float = 0.1, curve_segments: int = 10,
-):
+def gen_manual_vtcs(tooth_count: int = 16, pitch_radius: float = 1.0,
+pressure_angle: float = 0.349066, backlash: float = 0.01,
+curve_segments: int = 5):
     z = tooth_count
     rp = pitch_radius # m
     ψ = pressure_angle # rad

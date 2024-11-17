@@ -66,6 +66,8 @@ self.addEventListener('message', async message => {
       result,
       error,
     })
+    
+    if(data.function === 'execute') self.postMessage({ event: 'gen' })
   }
 })
 
@@ -548,18 +550,25 @@ self.python = async args => {
   }
 }
 
+self.list_scripts = () => {
+  return Object.keys(VFS).filter(path => (
+    path[0] === '/' && // Keys are only valid file paths if they begin with /
+    !path.slice(1).includes('/') && // Only top-level files should be returned
+    path.slice(-3) === '.py' // Only .py files should be returned
+  )).map(path => path.slice(1, -3))
+}
+
 self.inspect = args => {
-  const { path } = args
-  const result = []
+  const { module } = args
   
-  // Experiment: Can I get the gen function sigs from the source?
-  let source = UTF8Decoder.decode(VFS[path])
+  let source = UTF8Decoder.decode(VFS[`/${module}.py`])
   
   // Remove any comments from the source code
   source = source.replace(/#.*$/gm, '')
   
+  const result = {}
+  
   for(const signature of source.matchAll(REGEX_SIGNATURE)) {
-    
     // Strip all white space, including internal white space, before splitting
     let params = signature[2].replace(/\s/g,'').split(',')
     
@@ -568,17 +577,11 @@ self.inspect = args => {
     // parameters
     if(params.at(-1) === '') params.splice(-1, 1)
     
-    result.push({ name: signature[1], params: params.map(param => {
+    result[signature[1]] = params.map(param => {
       const [_, name, type, default_] = param.match(REGEX_PARAMETER)
       
       return { name, type, default: default_ }
-    }) })
-    
-    for(const param of params) {
-      const [_, name, type, default_] = param.match(REGEX_PARAMETER)
-      
-      console.log(`${name} ${type} ${default_}`)
-    }
+    })
   }
   
   return result

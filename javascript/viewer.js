@@ -170,7 +170,8 @@ export class ParaforgeViewer extends HTMLElement {
           command: ui_panels.shaderPanel.command }),
         fE('den-command-slot', { key: '3',
           command: this.fs_command }),
-        fE('den-command-slot', { key: '4' }),
+        fE('den-command-slot', { key: '4',
+          command: ui_panels.generatorPanel.command }),
         fE('den-command-slot', { key: '5' }),
         fE('den-command-slot', { key: '6' }),
         fE('den-command-slot', { key: '7' }),
@@ -182,6 +183,7 @@ export class ParaforgeViewer extends HTMLElement {
       ]),
       ui_panels.helpPanel,
       ui_panels.shaderPanel,
+      ui_panels.generatorPanel,
     )
     
     // Needed to allow event listeners that return focus to this component when
@@ -244,8 +246,9 @@ export class ParaforgeViewer extends HTMLElement {
    * @param {string} old_value
    * @param {string} new_value
    */
-  attributeChangedCallback(name, _old_value, new_value) {
-    if(name === 'generator') this._apply_generator(new_value)
+  attributeChangedCallback(_name, _old_value, _new_value) {
+    // Attribute aren't used right now. Plan to use them soonish for setting
+    // default model at least, maybe parameters too
   }
   
   /**
@@ -255,26 +258,31 @@ export class ParaforgeViewer extends HTMLElement {
   async init(verbosity=0) {
     this.paraforge = new paraforge.Paraforge(verbosity)
     await this.paraforge.init()
+    ui_panels.generatorPanel.content.paraforge = this.paraforge
+    
+    this.paraforge.on('gen', async () => {
+      const glb = await this.paraforge.serialize()
+      
+      this.gltf_loader.parse(glb.buffer, '', gltf => {
+        this.generated_meshes.remove(this.generated_model)
+        this.generated_meshes.add(this.generated_model = gltf.scene)
+        this.renderNeeded = true
+      }, e => { throw e })
+    })
   }
   
   /**
    * Generate a model and update the 3D scene with the result
    * 
-   * @param script_url {string} URL of Python module to import
+   * @param script {string} Name of Python module to import (not including .py)
    * @param generator {string} Name of generator function to call. Do not
    *   include gen_ prefix
-   * @param python_args {Array<any>} Arguments to pass to generator
-   * @param python_kwargs {Object} Keyword arguments to pass to generator
    */
-  async gen(script_url, generator, python_args=[], python_kwargs={}) {
-    const glb = await this.paraforge.gen(script_url, generator, python_args,
-      python_kwargs)
-    
-    this.gltf_loader.parse(glb.buffer, '', gltf => {
-      this.generated_meshes.remove(this.generated_model)
-      this.generated_meshes.add(this.generated_model = gltf.scene)
-      this.renderNeeded = true
-    }, e => { throw e })
+  async gen(script, generator) {
+    ui_panels.generatorPanel.content.script = script
+    ui_panels.generatorPanel.content.generator = generator
+    await ui_panels.generatorPanel.content.render()
+    await ui_panels.generatorPanel.content.execute()
   }
 }
 customElements.define('paraforge-viewer', ParaforgeViewer)

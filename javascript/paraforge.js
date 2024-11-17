@@ -84,6 +84,9 @@ export class Paraforge extends EventTarget {
       
       if(message.data.event) {
         switch(message.data.event) {
+          case 'gen':
+            this.dispatchEvent(new GenEvent())
+            break
           case 'stdout':
             if(1 <= this.verbosity) {
               console.log(`stdout: ${message.data.line}`)
@@ -144,6 +147,7 @@ export class Paraforge extends EventTarget {
    * @param path {string} Where to place the file in the virtual file system
    * @param contents {string | ArrayBuffer} Contents of the file. May be either
    *   a string containing a URL to download, or the actual contents in a buffer
+   * @return {Promise<undefined>}
    */
   async add_file(path, contents) {
     let contents_
@@ -207,29 +211,32 @@ export class Paraforge extends EventTarget {
   /**
    * Retrieve a completed model in .glb format
    * 
-   * @returns {Promise<Uint8Array>}
+   * @return {Promise<Uint8Array>}
    */
   async serialize() {
     return await this._thread_call('serialize', {})
   }
   
   /**
+   * Lists available Paraforge scripts. Any .py file added at the top level of
+   * the VFS is considered an available script. Scripts are reported by module
+   * name, not filename (so the .py extension is not included)
+   * 
+   * @return {Promise<string[]>}
+   */
+  async list_scripts() {
+    return await this._thread_call('list_scripts', {})
+  }
+  
+  /**
    * Inspect a paraforge script and return an array of model generator names and
    * parameters.
    * 
-   * @param script_url {string} URL of Python module to import
+   * @param module {string} Name of Python module to inspect (excluding .py)
+   * @return {Promise<Object>}
    */
-  async inspect(script_url) {
-    const script_filename = script_url.split('/').slice(-1)[0]
-    if(script_filename.slice(-3) !== '.py') {
-      throw new Error('Paraforge script filenames must end in .py')
-    }
-    
-    if(!await this.check_file_exists('/' + script_filename)) {
-      await this.add_file('/' + script_filename, script_url)
-    }
-    
-    return await this._thread_call('inspect', { path: '/' + script_filename })
+  async inspect(module) {
+    return await this._thread_call('inspect', { module })
   }
   
   /**
@@ -262,7 +269,16 @@ export class Paraforge extends EventTarget {
 
 export class ParaforgeEvent extends Event {}
 
+export class GenEvent extends ParaforgeEvent {
+  constructor() {
+    super('gen')
+  }
+}
+
 export class StdoutEvent extends ParaforgeEvent {
+  /**
+   * @param path {line}
+   */
   constructor(line) {
     super('stdout')
     this.line = line
@@ -270,6 +286,9 @@ export class StdoutEvent extends ParaforgeEvent {
 }
 
 export class StderrEvent extends ParaforgeEvent {
+  /**
+   * @param path {line}
+   */
   constructor(line) {
     super('stderr')
     this.line = line
