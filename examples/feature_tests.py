@@ -59,7 +59,8 @@ curve_segments: int = 5):
     red_block.extrude(0, 0, 1)
     
     tooth_mesh = Mesh('Gear Test')
-    tooth_mesh.new_prim(red_block.pack(), material=Material('Red', '#f00'))
+    tooth_mesh.new_prim(red_block.pack(), material=Material('Bronze', '#984',
+        metallicity=1.0, roughness=0.5))
     
     gear = Node('Gear Test', root=True)
     for i in range(z):

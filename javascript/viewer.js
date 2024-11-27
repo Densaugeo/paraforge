@@ -41,14 +41,9 @@ export class ParaforgeViewer extends HTMLElement {
     
     this.scene = new THREE.Scene()
     
-    this.ambientLight = this.scene.f3D(THREE.AmbientLight, {
-      color: new THREE.Color(0x666666),
-      intensity: 3.14159,
-    }),
-    
     this.directionalLight = this.scene.f3D(THREE.DirectionalLight, {
       color: new THREE.Color(0x666666),
-      position: [-7.1, -2.75, 10],
+      position: [7.1, -2.75, 10],
       intensity: 3.14159,
     })
     
@@ -71,8 +66,34 @@ export class ParaforgeViewer extends HTMLElement {
     this.generated_meshes = this.scene.f3D(THREE.Group)
     
     this.renderer = new THREE.WebGLRenderer( { antialias: true } );
-    this.renderer.setClearColor(0xc0c0c0, 1);
     this.renderer.outputColorSpace = THREE.LinearSRGBColorSpace
+    
+    // Regular ambient lights don't work with metallic materials. Instead, those
+    // use an environment map which basically replaces the ambient light with a
+    // skybox-like cube that describes ambient light level in every direction.
+    // This is done to allow showing reflections of the rest of the scene, but I
+    // don't want to do that for performance reasons so I'm using a camera in an
+    // empty layer to create an environment map that's just a solid color.
+    // Importantly, a scene-wide environment map also applies to non-metallic
+    // materials as well, in which case a solid-color map is near-identical to
+    // an ambient light of the same shade at intensity π, with the only
+    // difference being a slight specular lighting effect in the other color
+    // channels (in this case I measured final color of #036603 for a pure green
+    // cube vs #006600 for the same cube under ambient light).
+    //
+    // In summary: Uses a CubeCamera to create an environment map that mimics
+    // ambient light in order to support metallic materials. The color of this
+    // "ambient light" is the clear color used during CubeCamera.update().
+    this.env_camera = f3D(THREE.CubeCamera, {
+      near: 1, far: 1000,
+      // Size taken from reflection tutorial, not sure if important
+      renderTarget: new THREE.WebGLCubeRenderTarget(256),
+    })
+    this.env_camera.layers.set(1) // Empty layer
+    this.renderer.setClearColor(0x666666, 1)
+    this.env_camera.update(this.renderer, this.scene)
+    this.renderer.setClearColor(0xc0c0c0, 1)
+    this.scene.environment = this.env_camera.renderTarget.texture
     
     this.camera = f3D(THREE.PerspectiveCamera, {
       fov: 45, near: 1, far: 1000,
