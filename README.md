@@ -15,6 +15,18 @@ Evaluation of a Python-Rust architecture for a parametric modeling project.
   * Add a Forge class to Python to manage connections to Rust modules and
     make Paraforge's hidden state more intuitive
   * Need to properly support Scenes
+  * Will probably need to make more GLTF objects immutable to allow
+    deduplication, especially when generators are calling other generators
+  * Proposal for enabling composition with deduplication:
+    - Python-side objects don't initially talk to Rust
+    - Each Python-side GLTF object has a .pack() method that generates the Rust
+      side object, and also freezes the Python object
+    - .pack() calls are recursive - Node.pack() would .pack() all the relevant
+      materials, geometries, etc..
+    - Paraforge generators get a decorator, which will ensure .pack() is always
+      called on the result
+    - This decorator could later handle caching generator calls, since generator
+      argument are passed by value and the results are immutable
 - Basic geometries
   * Plane
   * Some spheres
