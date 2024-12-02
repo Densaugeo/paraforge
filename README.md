@@ -34,6 +34,9 @@ Evaluation of a Python-Rust architecture for a parametric modeling project.
   * Way of specifying metadata like bounds, step, display name
   * Automated enforcement of bounds
   * How to make sure metadata is well-formatted?
+  * Made a serious attempt at this and it might be impossible/impractical.
+    Decorators wreak havoc on LSP and type hints, Callable classes don't work
+    with LSP at all, and MicroPython won't allow setting attributes on functions
 
 ## License
 
