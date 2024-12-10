@@ -22,7 +22,8 @@ sys.modules['script'] = script
 spec.loader.exec_module(script)
 
 paraforge.init()
-getattr(script, 'gen_' + args.generator)(*args.parameters)
+model = getattr(script, 'gen_' + args.generator)(*args.parameters)
+paraforge.wasm_call('scene_add_node', 0, model.handle)
 glb = paraforge.serialize()
 glb_length = struct.unpack('<L', glb[8:12])[0]
 assert glb_length == len(glb)

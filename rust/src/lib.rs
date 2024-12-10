@@ -707,6 +707,38 @@ fn node_new() -> FFIResult<usize> {
 }
 
 #[ffi]
+fn node_clone_subtree(node: usize) -> FFIResult<usize> {
+  // This lock must be saved in a variable before it can be used.
+  // (lock(&GLB_JSON)?).as_ref()... does not compile. This snippet cannot be
+  // wrapped in a function
+  let mut glb_json_option = lock(&GLB_JSON)?;
+  let glb_json = glb_json_option.as_mut().ok_or(
+    ErrorCode::NotInitialized)?;
+  
+  if node >= glb_json.nodes.len() {
+    return Err(ErrorCode::HandleOutOfBounds);
+  }
+  
+  return Ok(node_clone_subtree_recursor(glb_json,
+    gltf_json::Index::new(node as u32))?.value());
+}
+
+fn node_clone_subtree_recursor(
+  root: &mut gltf_json::Root,
+  node: gltf_json::Index<gltf_json::Node>,
+) -> FFIResult<gltf_json::Index<gltf_json::Node>> {
+  let mut clone = root.get(node).ok_or(ErrorCode::HandleOutOfBounds)?.clone();
+  
+  if clone.children != None {
+    for child_index in clone.children.as_mut().unwrap() {
+      *child_index = node_clone_subtree_recursor(root, *child_index)?;
+    }
+  }
+  
+  return Ok(root.push(clone));
+}
+
+#[ffi]
 fn node_add_node(node_1: usize, node_2: usize) -> FFIResult<()> {
   // This lock must be saved in a variable before it can be used.
   // (lock(&GLB_JSON)?).as_ref()... does not compile. This snippet cannot be

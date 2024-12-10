@@ -1,4 +1,5 @@
-const REGEX_SIGNATURE = /^def\s+gen_(\p{XID_Continue}+)\s*\(([\S\s]*?)\):/gmu
+const REGEX_SIGNATURE =
+  /^def\s+gen_(\p{XID_Continue}+)\s*\(([\S\s]*?)\)(?: -> Node)?:/gmu
 const REGEX_PARAMETER = new RegExp(
   // Name (any valid identifier)
   /(\p{XID_Start}\p{XID_Continue}+)/.source +
@@ -603,7 +604,8 @@ self.execute = args => {
     with open('/paraforge/string_transfer') as f:
         module = __import__(f.read())
     module.init()
-    module.gen_${generator}(${passthrough.join(', ')})
+    model = module.gen_${generator}(${passthrough.join(', ')})
+    paraforge.wasm_call('scene_add_node', 0, model.handle)
   ` })
 }
 
@@ -742,4 +744,5 @@ const proxy_convert_mp_to_js = pointer => {
   }
 }
 
+python({ code: 'import paraforge' })
 init_return_resolve(null)

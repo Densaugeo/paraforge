@@ -157,8 +157,11 @@ class Node:
         wasm_call('node_set_mesh', self._handle, v.handle)
         self._mesh = v
     
-    def __init__(self, name: str = '', root: bool = False,
-    mesh: 'Mesh' = None):
+    def __init__(self, name: str = '', mesh: 'Mesh' = None,
+    _skip_init: bool = False):
+        if _skip_init:
+            return
+        
         assert len(name) <= 64
         
         self._name = name
@@ -175,13 +178,29 @@ class Node:
         # be present
         if mesh is not None:
             self.mesh = mesh
-        
-        if root:
-            wasm_call('scene_add_node', 0, self._handle)
     
     def add(self, node: 'Node') -> 'Node':
         wasm_call('node_add_node', self._handle, node.handle)
         return self
+    
+    def clone_subtree(self) -> 'Node':
+        '''
+        Clones this Node, and recursively clones all children. Nodes are fully
+        cloned into new instances, while other objects in the tree like Meshes
+        reference existing instances. This is to accomodate the GLTF spec, which
+        forbids Nodes from appearing multiple times in the same Scene, but
+        permits it for other objects.
+        '''
+        result = Node(_skip_init=True)
+        result._name = self._name
+        result._translation = self._translation
+        result._quaternion = self._quaternion
+        result._scale = self._scale
+        result._matrix = self._matrix
+        result._mesh = self._mesh
+        
+        result._handle = wasm_call('node_clone_subtree', self._handle)
+        return result
 
 
 class Mesh:
@@ -206,7 +225,7 @@ class Mesh:
         return wasm_call('mesh_get_prim_count', self._handle)
 
 
-class PackedGeometry():
+class PackedGeometry:
     @property
     def handle(self): return self._handle
 

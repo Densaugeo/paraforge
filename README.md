@@ -11,22 +11,34 @@ Evaluation of a Python-Rust architecture for a parametric modeling project.
   * Geometry operations update selection in sane ways
   * TRS transforms apply selection
 - Code cleanup
+  * Create function for loading new script files into VM
+    - Simplest way I can think of for allowing imports from any URL
+    - Seems awkard to add and then import every file. Could allow loading a
+      whole folder, or replace import with another function. A quick test shows
+      import from folder like "from examples.feature_tests import *" seems to
+      work - maybe create a load_package function that copies a folder in?
+    - Another option would be trying to build something around requirements
+      fiels and Python-style packaging
   * Figure out where I want to use u32 vs usize
   * Add a Forge class to Python to manage connections to Rust modules and
     make Paraforge's hidden state more intuitive
+    - Debatable how useful manage multiple Rust-side modules really is,
+      especially if I adopt WebAssembly for terminal use as well
+    - However, it might be nice to have an object for acessing the full
+      collection of GLTF objects at any given time
   * Need to properly support Scenes
-  * Will probably need to make more GLTF objects immutable to allow
-    deduplication, especially when generators are calling other generators
-  * Proposal for enabling composition with deduplication:
-    - Python-side objects don't initially talk to Rust
-    - Each Python-side GLTF object has a .pack() method that generates the Rust
-      side object, and also freezes the Python object
-    - .pack() calls are recursive - Node.pack() would .pack() all the relevant
-      materials, geometries, etc..
-    - Paraforge generators get a decorator, which will ensure .pack() is always
-      called on the result
-    - This decorator could later handle caching generator calls, since generator
-      argument are passed by value and the results are immutable
+  * Replace geometry packing with freeze mechanism?
+    - Previously investigated a freeze mechanism to support caching and reuse of
+      Nodes. Effort failed because Nodes cannot appear more than once in the
+      node tree per spec.
+    - Applying freezes to Node/Mesh/Geometry could still be useful, since they
+      will be reused by cloning. Not MVP though.
+    - Using a freeze mechanism on Geometries could avoid a memory copy if they
+      don't have to be packed (should test this when I have better memory
+      testing).
+    - Freeze mechanism would be implemented on the Rust side, by storing freeze
+      flags in Geometry structs (or in parallel arrays for GLTF structs).
+    - Geometry and PackedGeometry could be merged.
 - Basic geometries
   * Plane
   * Some spheres

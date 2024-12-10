@@ -4,9 +4,9 @@ from paraforge import *
 
 π = pi
 
-def gen_manual_vtcs(tooth_count: int = 16, pitch_radius: float = 1.0,
+def gen_gear(tooth_count: int = 16, pitch_radius: float = 1.0,
 pressure_angle: float = 0.349066, backlash: float = 0.01,
-curve_segments: int = 5):
+curve_segments: int = 5) -> Node:
     z = tooth_count
     rp = pitch_radius # m
     ψ = pressure_angle # rad
@@ -58,31 +58,37 @@ curve_segments: int = 5):
     red_block.select_vtcs(-10, -10, -10, 10, 10, 10)
     red_block.extrude(0, 0, 1)
     
-    tooth_mesh = Mesh('Gear Test')
+    tooth_mesh = Mesh('Gear Tooth')
     tooth_mesh.new_prim(red_block.pack(), material=Material('Bronze', '#984',
         metallicity=1.0, roughness=0.5))
     
-    gear = Node('Gear Test', root=True)
+    gear = Node('Gear')
     for i in range(z):
         gear.add(Node(mesh=tooth_mesh).rz(2*π/z*i))
-    
-    green_block = Geometry()
+    return gear
+
+def gen_extrusion() -> Node:
+    geometry = Geometry()
     for x in [-1, 1]:
         for y in [-1, 1]:
-            green_block.create_vtx(x, y, -1)
-    green_block.create_tri(0, 2, 1).create_tri(1, 2, 3)
-    green_block.select_vtcs(-10, -10, -10, 10, 10, 10).extrude(0, 0, 2)
-    green_block.t(3, 0, 0)
+            geometry.create_vtx(x, y, -1)
+    geometry.create_tri(0, 2, 1).create_tri(1, 2, 3)
+    geometry.select_vtcs(-10, -10, -10, 10, 10, 10).extrude(0, 0, 2)
     
-    blue_block = Geometry()
+    ext = Node('Extrusion Test Block')
+    ext.mesh = Mesh()
+    ext.mesh.new_prim(geometry.pack(), material=Material('Green', '#0f0'))
+    return ext
+
+def gen_extrusion_inside_out() -> Node:
+    geometry = Geometry()
     for x in [-1, 1]:
         for y in [-1, 1]:
-            blue_block.create_vtx(x, y, -1)
-    blue_block.create_tri(0, 1, 2).create_tri(1, 3, 2)
-    blue_block.select_tris(-10, -10, -10, 10, 10, 10).extrude(0, 0, 2)
-    blue_block.t(6, 0, 0)
+            geometry.create_vtx(x, y, -1)
+    geometry.create_tri(0, 1, 2).create_tri(1, 3, 2)
+    geometry.select_tris(-10, -10, -10, 10, 10, 10).extrude(0, 0, 2)
     
-    ext = Node('Extrusion Test Blocks', root=True)
-    ext.mesh = Mesh('Extrusion Test Blocks')
-    ext.mesh.new_prim(green_block.pack(), material=Material('Green', '#0f0'))
-    ext.mesh.new_prim(blue_block .pack(), material=Material('Blue' , '#00f'))
+    ext = Node('Extrusion Test Block')
+    ext.mesh = Mesh()
+    ext.mesh.new_prim(geometry.pack(), material=Material('Blue' , '#00f'))
+    return ext

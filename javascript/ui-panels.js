@@ -354,7 +354,7 @@ export class DenGeneratorUI extends HTMLElement {
     if(generator) {
       script_info[generator].forEach(v => {
         if(v.type !== 'int' && v.type != 'float')
-          throw new Error(`Unsupported parameter type "${type}"`)
+          throw new Error(`Unsupported parameter type "${v.type}"`)
         const type = 'number'
         
         table.append(fE('tr', [
