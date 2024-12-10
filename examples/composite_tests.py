@@ -2,6 +2,8 @@ from math import *
 
 from paraforge import *
 
+from feature_tests import *
+
 π = pi
 
 def gen_composite_model() -> Node:
