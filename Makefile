@@ -19,6 +19,14 @@ test:
 	rm -rf test-temp
 	venv-$(PY)/bin/python -u -m pytest $(PYTEST_ARGS) $(TEST)
 
+watch:
+	while true; do \
+		make build; \
+		curl -X POST -k https://localhost:8000/api-reloadserver/trigger-reload; \
+		make test; \
+		inotifywait --recursive --event modify --exclude .kate-swp examples javascript paraforge rust test.py; \
+	done
+
 test-manual: test.pem
 	cd test-files && npm update
 	
@@ -26,7 +34,7 @@ test-manual: test.pem
 	@printf 'Run manual tests by visiting pages served here:'
 	@printf ' !!!!\033[0m\n\n'
 	
-	cd test-files && ../venv-$(PY)/bin/python -m reloadserver -c ../test.pem
+	cd test-files && ../venv-$(PY)/bin/python -m reloadserver -c ../test.pem --blind
 
 install-dev:
 	chmod 775 test-all.sh
