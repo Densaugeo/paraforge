@@ -57,6 +57,8 @@ export class Paraforge extends EventTarget {
     super()
     
     this.verbosity = verbosity
+    this.scripts = {}
+    this.last_gen = null
     
     this._worker = new Worker(worker_file, { type: 'module' })
     
@@ -77,16 +79,10 @@ export class Paraforge extends EventTarget {
           const error_type = e.name === 'PythonError' ? PythonError : Error
           this._reject(new error_type(e.message))
         }
-        
-        this._resolve = null
-        this._reject = null
       }
       
       if(message.data.event) {
         switch(message.data.event) {
-          case 'gen':
-            this.dispatchEvent(new GenEvent())
-            break
           case 'stdout':
             if(1 <= this.verbosity) {
               console.log(`stdout: ${message.data.line}`)
@@ -113,25 +109,37 @@ export class Paraforge extends EventTarget {
     
     this._resolve = null
     this._reject = null
+    this._running_function = null
   }
   
-  _thread_call(name, args) {
-    if(this._resolve) throw new Error('Worker already running!')
+  async _thread_call(name, args) {
+    if(this._resolve) {
+      throw new Error(`Worker already running ${this._running_function}()!`)
+    }
     
     this._worker.postMessage({
       function: name,
       args,
     })
     
-    return new Promise((resolve, reject) => {
+    const promise = await new Promise((resolve, reject) => {
       this._resolve = resolve
       this._reject = reject
+      this._running_function = name
     })
+    
+    this._resolve = null
+    this._reject = null
+    this._running_function = null
+    
+    return promise
   }
   
   /**
    * Must be called exactly once after construction. Performs longer-running
    * initialization that is not suitable for the constructor
+   * 
+   * @return {Promise<undefined>}
    */
   async init() {
     return await this._thread_call('init', {
@@ -143,6 +151,9 @@ export class Paraforge extends EventTarget {
   
   /**
    * Add a file into the virtual file system used by the MicroPython VM
+   * 
+   * NOTE: I think saving script download paths will require contents to always
+   * be a URL, maybe remove the ArrayBuffer option?
    * 
    * @param path {string} Where to place the file in the virtual file system
    * @param contents {string | ArrayBuffer} Contents of the file. May be either
@@ -159,10 +170,21 @@ export class Paraforge extends EventTarget {
       contents_ = await res.arrayBuffer()
     }
     
-    return await this._thread_call('add_file', {
+    await this._thread_call('add_file', {
       path,
       contents: contents_,
     })
+    
+    // Checking if file should be added to .scripts. This check is the same as
+    // the check used to filter responses to list_scripts() in the worker thread
+    if(path[0] === '/' && !path.slice(1).includes('/')
+    && path.slice(-3) === '.py') {
+      this.scripts[path.slice(1, -3)] = {
+        path,
+        url: contents,
+        generators: await this.inspect(path.slice(1, -3)),
+      }
+    }
   }
   
   /**
@@ -170,6 +192,7 @@ export class Paraforge extends EventTarget {
    * VM
    * 
    * @param path {string}
+   * @return {Promise<boolean>}
    */
   async check_file_exists(path) {
     return await this._thread_call('check_file_exists', {
@@ -183,6 +206,7 @@ export class Paraforge extends EventTarget {
    * WebAssembly module
    * 
    * @param code {string}
+   * @return {Promise<Object>}
    */
   async python(code) {
     return await this._thread_call('python', { code })
@@ -198,14 +222,24 @@ export class Paraforge extends EventTarget {
    *   include gen_ prefix
    * @param python_args {Array<any>} Arguments to pass to generator
    * @param python_kwargs {Object} Keyword arguments to pass to generator
+   * @return {Promise<undefined>}
    */
   async execute(script_name, generator, python_args=[], python_kwargs={}) {
-    return await this._thread_call('execute', {
+    await this._thread_call('execute', {
       script_name,
       generator,
       python_args,
       python_kwargs,
     })
+    
+    this.last_gen = {
+      script: script_name,
+      generator,
+      python_args,
+      python_kwargs,
+    }
+    
+    this.dispatchEvent(new GenEvent())
   }
   
   /**
@@ -221,6 +255,9 @@ export class Paraforge extends EventTarget {
    * Lists available Paraforge scripts. Any .py file added at the top level of
    * the VFS is considered an available script. Scripts are reported by module
    * name, not filename (so the .py extension is not included)
+   * 
+   * NOTE: Trying to replace this with the .scripts field, updated by
+   * .add_file(). Hopefully this method can be removed if that goes well
    * 
    * @return {Promise<string[]>}
    */
@@ -249,6 +286,7 @@ export class Paraforge extends EventTarget {
    *   include gen_ prefix
    * @param python_args {Array<any>} Arguments to pass to generator
    * @param python_kwargs {Object} Keyword arguments to pass to generator
+   * @return {Promise<Uint8Array>}
    */
   async gen(script_url, generator, python_args=[], python_kwargs={}) {
     const script_filename = script_url.split('/').slice(-1)[0]

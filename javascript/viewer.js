@@ -115,6 +115,11 @@ export class ParaforgeViewer extends HTMLElement {
       if(document.fullscreenElement) document.exitFullscreen()
       else this.requestFullscreen()
     })
+    this.reset_settings_command = new helpers.DenCommand('reset-settings.svg',
+    'Reset Settings', () => {
+      localStorage.clear()
+      location.reload()
+    })
     
     ui_panels.shaderChanger.scene = this.generated_meshes
     ui_panels.shaderChanger.on('change', () => this.renderNeeded = true)
@@ -193,7 +198,8 @@ export class ParaforgeViewer extends HTMLElement {
           command: this.fs_command }),
         fE('den-command-slot', { key: '4',
           command: ui_panels.generatorPanel.command }),
-        fE('den-command-slot', { key: '5' }),
+        fE('den-command-slot', { key: '5',
+          command: this.reset_settings_command }),
         fE('den-command-slot', { key: '6' }),
         fE('den-command-slot', { key: '7' }),
         fE('den-command-slot', { key: '8',
@@ -220,7 +226,7 @@ export class ParaforgeViewer extends HTMLElement {
     })
   }
   
-  async connectedCallback() {
+  connectedCallback() {
     this.render()
     
     this.addEventListener('keydown', e => {
@@ -290,6 +296,9 @@ export class ParaforgeViewer extends HTMLElement {
         this.renderNeeded = true
       }, e => { throw e })
     })
+    
+    // Need to have that event handler up before restoring state!
+    await ui_panels.generatorPanel.content.restore_state()
   }
   
   /**

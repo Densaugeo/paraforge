@@ -250,7 +250,61 @@ shaderPanel.toggles = shaderPanel.querySelector('den-shader-ui').toggles
 
 export class DenGeneratorUI extends HTMLElement {
   /** @type {paraforge.Paraforge | null} */
-  paraforge = null
+  _paraforge = null
+  get paraforge() { return this._paraforge }
+  set paraforge(v) {
+    if(this._paraforge) {
+      this._paraforge.off('gen', this._gen_listener)
+    }
+    
+    this._paraforge = v
+    
+    if(this._paraforge) {
+      this._paraforge.on('gen', this._gen_listener)
+    }
+    
+    this.render()
+  }
+  
+  _gen_listener = e => {
+    this.script = e.target.last_gen.script
+    this._script_input.classList.add('confirmed')
+    this.generator = e.target.last_gen.generator
+    this._generator_input.classList.add('confirmed')
+    
+    this.render()
+    
+    const inputs = this.shadow.querySelectorAll('input.parameter')
+    e.target.last_gen.python_args.forEach((v, i) => {
+      inputs[i].value = v
+      inputs[i].classList.add('confirmed')
+    })
+    
+    const scripts = {}
+    for(const value of Object.values(e.target.scripts)) {
+      scripts[value.path] = value.url
+    }
+    
+    localStorage[this._localStorage_id] = JSON.stringify({
+      last_gen: e.target.last_gen,
+      scripts,
+    })
+  }
+  
+  async restore_state() {
+    if(!localStorage[this._localStorage_id]) return
+    
+    const state = JSON.parse(localStorage[this._localStorage_id])
+    
+    for(const [path, url] of Object.entries(state.scripts)) {
+      if(!this.paraforge.scripts.hasOwnProperty(path.slice(1, -3))) {
+        await this.paraforge.add_file(path, url)
+      }
+    }
+    
+    await this.paraforge.execute(state.last_gen.script,
+      state.last_gen.generator, state.last_gen.python_args)
+  }
   
   /** @type {HTMLInputElement | null} */
   _script_input = null
@@ -266,6 +320,9 @@ export class DenGeneratorUI extends HTMLElement {
   get generator() { return this._generator_input?.value ?? '' }
   set generator(v) { if(this._generator_input) this._generator_input.value = v }
   
+  /** @type {string | null} */
+  _localStorage_id = null
+  
   constructor() {
     super()
     
@@ -278,14 +335,18 @@ export class DenGeneratorUI extends HTMLElement {
     }
     
     input {
+      color: #c0f;
+    }
+    
+    input.confirmed {
       color: #0ff;
     }
     `)
     this.shadow.adoptedStyleSheets = [sheet]
   }
   
-  execute() {
-    this.paraforge.execute(
+  async execute() {
+    await this.paraforge.execute(
       this.script,
       this.generator,
       Array.from(this.shadow.querySelectorAll('input.parameter').values()
@@ -293,18 +354,19 @@ export class DenGeneratorUI extends HTMLElement {
     )
   }
   
-  async connectedCallback() {
-    await this.render()
+  connectedCallback() {
+    this.render()
     
-    this.shadow.on('change', async (e) => {
-      // e.target will become null after await
-      const name = e.target.name
-      
-      if(['script', 'generator'].includes(name)) await this.render()
+    this.shadow.on('input', e => {
+      e.target.classList.remove('confirmed')
+    })
+    
+    this.shadow.on('change', e => {
+      if(['script', 'generator'].includes(e.target.name)) this.render()
       
       // Should be done second, so that if a new generator is set the 3D view
       // will be updated
-      if(name !== 'script') this.execute()
+      if(e.target.name !== 'script') this.execute()
     })
     
     // Disable all keyboard shortcuts inside textboxes, and arrow keys inside
@@ -318,26 +380,38 @@ export class DenGeneratorUI extends HTMLElement {
         e.stopPropagation()
       }
     })
+    
+    // Save ._localStorage_id for persisting state. ID is a full path to this
+    // component using element IDs (or tag names if those aren't available).
+    // This will hopefully allow persistence with mutliple instances (provided
+    // each Viewer instance has its own ID).
+    let path = []
+    
+    for(let cursor = this; cursor; cursor = cursor.getRootNode()?.host) {
+      path.unshift(cursor.id || cursor.tagName)
+    }
+    
+    this._localStorage_id = path.join('.')
   }
   
-  async render() {
+  render() {
     const table = fE('table')
     
-    const script_list = this.paraforge ? await this.paraforge.list_scripts()
+    const script_list = this.paraforge ? Object.keys(this.paraforge.scripts)
       : []
     
     table.append(fE('tr', [
       fE('td', ['Script:']),
       fE('td', [
         this._script_input = fE('input', { name: 'script',
-          list: 'available-scripts', value: this.script }),
+          list: 'available-scripts', value: this.script,
+          className: this._script_input?.className }),
         fE('datalist', { id: 'available-scripts' },
           script_list.map(path => fE('option', { value: path }))),
       ]),
     ]))
     
-    const script_info = (this.script && this.paraforge)
-      ? await this.paraforge.inspect(this.script) : {}
+    const script_info = this.paraforge?.scripts?.[this.script]?.generators ?? {}
     const generators = Object.keys(script_info)
     const generator = generators.includes(this.generator) ? this.generator : ''
     
@@ -345,7 +419,8 @@ export class DenGeneratorUI extends HTMLElement {
       fE('td', ['Generator:']),
       fE('td', [
         this._generator_input = fE('input', { name: 'generator',
-          list: 'available-generators', value: generator}),
+          list: 'available-generators', value: generator,
+          className: this._generator_input?.className }),
         fE('datalist', { id: 'available-generators' },
           generators.map(value => fE('option', { value }))),
       ]),

@@ -67,8 +67,6 @@ self.addEventListener('message', async message => {
       result,
       error,
     })
-    
-    if(data.function === 'execute') self.postMessage({ event: 'gen' })
   }
 })
 
@@ -552,6 +550,8 @@ self.python = async args => {
 }
 
 self.list_scripts = () => {
+  // The checks for a valid script file are the same as those recently added
+  // to Paraforge.add_file() outside the worker
   return Object.keys(VFS).filter(path => (
     path[0] === '/' && // Keys are only valid file paths if they begin with /
     !path.slice(1).includes('/') && // Only top-level files should be returned

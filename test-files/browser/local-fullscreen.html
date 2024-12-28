@@ -33,15 +33,22 @@ viewer.focus()
 
 await viewer.init()
 viewer.paraforge.on('stdout', e => console.log(e.line))
-//await viewer.paraforge.add_file('/first_model.py',
-//  '/examples/first_model.py')
-//await viewer.gen('first_model', 'first_model')
-await viewer.paraforge.add_file('/feature_tests.py',
-  '/examples/feature_tests.py')
-//await viewer.gen('feature_tests', 'gear')
-await viewer.paraforge.add_file('/composite_tests.py',
-  '/examples/composite_tests.py')
-await viewer.gen('composite_tests', 'composite_model')
+
+if(!viewer.paraforge.last_gen) {
+  //await viewer.paraforge.add_file('/first_model.py',
+  //  '/examples/first_model.py')
+  //await viewer.gen('first_model', 'first_model')
+  
+  //await viewer.paraforge.add_file('/feature_tests.py',
+  //  '/examples/feature_tests.py')
+  //await viewer.gen('feature_tests', 'gear')
+  
+  await viewer.paraforge.add_file('/feature_tests.py',
+    '/examples/feature_tests.py')
+  await viewer.paraforge.add_file('/composite_tests.py',
+    '/examples/composite_tests.py')
+  await viewer.gen('composite_tests', 'composite_model')
+}
 
 </script>
 </html>
