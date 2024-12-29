@@ -193,18 +193,23 @@ export class DenShaderUI extends HTMLElement {
   }
   
   render() {
+    const active_element = this.shadow.activeElement?.id
+    
     this.shadow.replaceChildren(
       'Select Shader:',
       fE('div', { id: 'shader-toggles' }, [
-        fE('den-command-slot', { command: this.toggles.original    }),
-        fE('den-command-slot', { command: this.toggles.global      }),
-        fE('den-command-slot', { command: this.toggles.local       }),
-        fE('den-command-slot', { command: this.toggles.ghost       }),
-        fE('den-command-slot', { command: this.toggles.normals     }),
+        fE('den-command-slot', { id: 'c1', command: this.toggles.original }),
+        fE('den-command-slot', { id: 'c2', command: this.toggles.global   }),
+        fE('den-command-slot', { id: 'c3', command: this.toggles.local    }),
+        fE('den-command-slot', { id: 'c4', command: this.toggles.ghost    }),
+        fE('den-command-slot', { id: 'c5', command: this.toggles.normals  }),
       ]),
     )
     
-    if(!(this.currentShader instanceof THREE.Material)) return
+    if(!(this.currentShader instanceof THREE.Material)) {
+      this.shadow.getElementById(active_element)?.focus()
+      return
+    }
     
     this.shadow.append(
       fE('br'),
@@ -234,6 +239,8 @@ export class DenShaderUI extends HTMLElement {
         fE('td', [fE('input', attributes)]),
       ])
     }
+    
+    this.shadow.getElementById(active_element)?.focus()
   }
 }
 customElements.define('den-shader-ui', DenShaderUI)
@@ -395,6 +402,8 @@ export class DenGeneratorUI extends HTMLElement {
   }
   
   render() {
+    const active_element = this.shadow.activeElement?.id
+    
     const table = fE('table')
     
     const script_list = this.paraforge ? Object.keys(this.paraforge.scripts)
@@ -403,8 +412,8 @@ export class DenGeneratorUI extends HTMLElement {
     table.append(fE('tr', [
       fE('td', ['Script:']),
       fE('td', [
-        this._script_input = fE('input', { name: 'script',
-          list: 'available-scripts', value: this.script,
+        this._script_input = fE('input', { id: 'script_input',
+          name: 'script', list: 'available-scripts', value: this.script,
           className: this._script_input?.className }),
         fE('datalist', { id: 'available-scripts' },
           script_list.map(path => fE('option', { value: path }))),
@@ -418,8 +427,8 @@ export class DenGeneratorUI extends HTMLElement {
     table.append(fE('tr', [
       fE('td', ['Generator:']),
       fE('td', [
-        this._generator_input = fE('input', { name: 'generator',
-          list: 'available-generators', value: generator,
+        this._generator_input = fE('input', { id: 'generator_input',
+          name: 'generator', list: 'available-generators', value: generator,
           className: this._generator_input?.className }),
         fE('datalist', { id: 'available-generators' },
           generators.map(value => fE('option', { value }))),
@@ -434,13 +443,14 @@ export class DenGeneratorUI extends HTMLElement {
         
         table.append(fE('tr', [
           fE('td', [v.name + ':']),
-          fE('td', [fE('input', { type, value: v.default,
+          fE('td', [fE('input', { id: 'input-' + v.name, type, value: v.default,
             className: 'parameter' })]),
         ]))
       })
     }
     
     this.shadow.replaceChildren(table)
+    this.shadow.getElementById(active_element)?.focus()
   }
 }
 customElements.define('den-generator-ui', DenGeneratorUI)

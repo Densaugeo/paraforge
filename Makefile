@@ -69,4 +69,4 @@ test.pem:
 clean:
 	cd rust && cargo clean
 	rm -rf paraforge/libparaforge.so build dist paraforge/__pycache__ paraforge.egg-info __pycache__ test-temp
-	rm -rf javascript/paraforge-rust.wasm javascript/__init__.py
+	rm -rf javascript/paraforge-rust.wasm javascript/__init__.py test-files/node_modules

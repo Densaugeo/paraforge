@@ -157,7 +157,7 @@ export class DenCommandSlot extends HTMLElement {
   constructor() {
     super()
     
-    this.shadow = this.attachShadow({ mode: 'closed' })
+    this.shadow = this.attachShadow({ mode: 'closed', delegatesFocus: true })
     
     const sheet = new CSSStyleSheet()
     sheet.replaceSync(`
