@@ -345,7 +345,7 @@ export class DenGeneratorUI extends HTMLElement {
       color: #c0f;
     }
     
-    input.confirmed {
+    input.confirmed, input[type=button] {
       color: #0ff;
     }
     `)
@@ -364,6 +364,19 @@ export class DenGeneratorUI extends HTMLElement {
   connectedCallback() {
     this.render()
     
+    this.shadow.on('click', async e => {
+      if(e.target.id !== 'input-add-script') return
+      
+      const url = this.shadow.querySelector('input#input-url').value
+      const path = this.shadow.querySelector('input#input-path').value
+      
+      if(!url || !path) throw new Error('Both path and URL must be specified ' +
+        'to add a new script file')
+      
+      await this.paraforge.add_file(path, url)
+      this.render()
+    })
+    
     this.shadow.on('input', e => {
       e.target.classList.remove('confirmed')
     })
@@ -373,7 +386,8 @@ export class DenGeneratorUI extends HTMLElement {
       
       // Should be done second, so that if a new generator is set the 3D view
       // will be updated
-      if(e.target.name !== 'script') this.execute()
+      if(e.target.name === 'generator'
+      || e.target.classList.contains('parameter')) this.execute()
     })
     
     // Disable all keyboard shortcuts inside textboxes, and arrow keys inside
@@ -449,7 +463,17 @@ export class DenGeneratorUI extends HTMLElement {
       })
     }
     
-    this.shadow.replaceChildren(table)
+    this.shadow.replaceChildren(
+      table,
+      fE('br'),
+      fE('input', { id: 'input-url', placeholder: 'URL' }),
+      fE('br'),
+      fE('input', { id: 'input-path', placeholder: '/path/in/VM' }),
+      fE('br'),
+      fE('input', { id: 'input-add-script', type: 'button',
+        value: 'Add new script' }),
+    )
+    
     this.shadow.getElementById(active_element)?.focus()
   }
 }
