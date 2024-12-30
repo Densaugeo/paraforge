@@ -356,8 +356,8 @@ export class DenGeneratorUI extends HTMLElement {
     await this.paraforge.execute(
       this.script,
       this.generator,
-      Array.from(this.shadow.querySelectorAll('input.parameter').values()
-        .map(el => el.value)),
+      Array.from(this.shadow.querySelectorAll('input.parameter').values())
+        .map(el => el.value),
     )
   }
   

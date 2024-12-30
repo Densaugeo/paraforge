@@ -122,15 +122,19 @@ export class Paraforge extends EventTarget {
       args,
     })
     
-    const promise = await new Promise((resolve, reject) => {
+    const promise = new Promise((resolve, reject) => {
       this._resolve = resolve
       this._reject = reject
       this._running_function = name
     })
     
-    this._resolve = null
-    this._reject = null
-    this._running_function = null
+    try {
+      await promise
+    } finally {
+      this._resolve = null
+      this._reject = null
+      this._running_function = null
+    }
     
     return promise
   }
