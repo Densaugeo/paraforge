@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, HashMap, BTreeSet};
 use std::sync::{Mutex, MutexGuard};
 
+use nalgebra::Vector4;
 pub use nalgebra::Vector3 as V3;
 
 use paraforge_macros::ffi;
@@ -203,8 +204,12 @@ impl Geometry {
   pub fn translate(&mut self, x: f64, y: f64, z: f64) {
     let translation = V3::new(x, y, z);
     
-    for vtx in &mut self.vtcs {
-      *vtx += translation;
+    // Idk how to handle iterating over tris. Maybe I should remove support for
+    // selecting by tris?
+    if self.selection_type == SelectionType::TRIS { return }
+    
+    for &i in &self.selection {
+      self.vtcs[i as usize] += translation;
     }
   }
   
@@ -212,8 +217,12 @@ impl Geometry {
   pub fn scale(&mut self, x: f64, y: f64, z: f64) {
     let scale = V3::new(x, y, z);
     
-    for vtx in &mut self.vtcs {
-      vtx.component_mul_assign(&scale);
+    // Idk how to handle iterating over tris. Maybe I should remove support for
+    // selecting by tris?
+    if self.selection_type == SelectionType::TRIS { return }
+    
+    for &i in &self.selection {
+      self.vtcs[i as usize].component_mul_assign(&scale);
     }
   }
   
@@ -420,6 +429,46 @@ impl Geometry {
     }
   }
   
+  //       3 ----- 7
+  //      /       /|
+  //    1 ----- 5  |
+  //    |  |    |  |
+  //    |  2 ---|- 6    Z  X
+  //    | /     | /     | /
+  //    0 ----- 4       O--Y
+  pub fn add_cube(&mut self) {
+    let vtx_offset = self.vtcs.len() as u32;
+    
+    for x in [-1.0, 1.0] {
+      for y in [-1.0, 1.0] {
+        for z in [-1.0, 1.0] {
+          self.vtcs.push(V3::new(x, y, z));
+        }
+      }
+    }
+    
+    // Due to the way the vtcs were created, any vtx pair has a difference in
+    // their indices corresponding to the line between them: 1 if parallel to Z,
+    // 2 if parallel to Y, 4 if parallel to X, or a sum of the appropriate axes
+    // in other cases
+    for axes in [(1, 2, 4), (2, 4, 1), (4, 1, 2)] {
+      let mut square = Vector4::new(0u32, axes.0, axes.1, axes.0 + axes.1)
+        .add_scalar(vtx_offset);
+      
+      self.tris.push([square[0], square[1], square[2]]);
+      self.tris.push([square[3], square[2], square[1]]);
+      
+      square.add_scalar_mut(axes.2);
+      
+      self.tris.push([square[2], square[1], square[0]]);
+      self.tris.push([square[1], square[2], square[3]]);
+    }
+    
+    self.selection.clear();
+    self.selection_type = SelectionType::VTCS;
+    self.selection.extend(vtx_offset..vtx_offset + 8);
+  }
+  
   pub fn new() -> Self {
     Self {
       vtcs: Vec::new(),
@@ -469,7 +518,7 @@ impl Geometry {
         [0, 4, 2],
         [2, 4, 6],
       ],
-      selection: BTreeSet::new(),
+      selection: BTreeSet::from([0, 1, 2, 3, 4, 5, 6, 7]),
       selection_type: SelectionType::VTCS,
     }
   }
@@ -1160,6 +1209,16 @@ fn geometry_extrude(handle: usize, x: f64, y: f64, z: f64) -> FFIResult<()> {
   if handle >= geometries.len() { return Err(ErrorCode::HandleOutOfBounds) };
   
   geometries[handle].extrude(V3::new(x, y, z));
+  
+  Ok(())
+}
+
+#[ffi]
+fn geometry_add_cube(handle: usize) -> FFIResult<()> {
+  let mut geometries = lock(&GEOMETRIES)?;
+  if handle >= geometries.len() { return Err(ErrorCode::HandleOutOfBounds) };
+  
+  geometries[handle].add_cube();
   
   Ok(())
 }

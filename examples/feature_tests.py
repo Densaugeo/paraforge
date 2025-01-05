@@ -90,5 +90,17 @@ def gen_extrusion_inside_out() -> Node:
     
     ext = Node('Extrusion Test Block')
     ext.mesh = Mesh()
-    ext.mesh.new_prim(geometry.pack(), material=Material('Blue' , '#00f'))
+    ext.mesh.new_prim(geometry.pack(), material=Material('Blue', '#00f'))
     return ext
+
+def gen_cube() -> Node:
+    geometry = Geometry()
+    for x in [-1, 1]:
+        for y in [-1, 1]:
+            for z in [-1, 1]:
+                geometry.add_cube().s(0.4, 0.4, 0.4).t(0.6*x, 0.6*y,  0.6*z)
+    
+    node = Node('Cube Test')
+    node.mesh = Mesh()
+    node.mesh.new_prim(geometry.pack(), material=Material('Yellow', '#ff0'))
+    return node

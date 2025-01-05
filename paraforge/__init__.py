@@ -307,6 +307,10 @@ class Geometry:
     def t(self, x: int | float, y: int | float, z: int | float) -> 'Geometry':
         return self.translate(x, y, z)
     
+    def tx(self, v: int | float) -> 'Geometry': return self.t(v  , 0.0, 0.0)
+    def ty(self, v: int | float) -> 'Geometry': return self.t(0.0, v  , 0.0)
+    def tz(self, v: int | float) -> 'Geometry': return self.t(0.0, 0.0, v  )
+    
     def translate(self, x: int | float, y: int | float, z: int | float,
     ) -> 'Geometry':
         wasm_call('geometry_translate', self._handle, float(x), float(y),
@@ -315,6 +319,10 @@ class Geometry:
     
     def s(self, x: int | float, y: int | float, z: int | float) -> 'Geometry':
         return self.scale(x, y, z)
+    
+    def sx(self, v: int | float) -> 'Geometry': return self.s(v  , 1.0, 1.0)
+    def sy(self, v: int | float) -> 'Geometry': return self.s(1.0, v  , 1.0)
+    def sz(self, v: int | float) -> 'Geometry': return self.s(1.0, 1.0, v  )
     
     def scale(self, x: int | float, y: int | float, z: int | float,
     ) -> 'Geometry':
@@ -383,6 +391,10 @@ class Geometry:
     ) -> 'Geometry':
         wasm_call('geometry_extrude', self._handle,
             float(x), float(y), float(z))
+        return self
+    
+    def add_cube(self) -> 'Geometry':
+        wasm_call('geometry_add_cube', self._handle)
         return self
     
     def pack(self) -> PackedGeometry:
