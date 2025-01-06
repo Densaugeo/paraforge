@@ -55,7 +55,7 @@ curve_segments: int = 5) -> Node:
     for i in range(1, red_block.get_vtx_count() - 1):
         red_block.create_tri(0, i, i + 1)
     
-    red_block.select_vtcs(-10, -10, -10, 10, 10, 10)
+    red_block.select(-10, -10, -10, 10, 10, 10)
     red_block.extrude(0, 0, 1)
     
     tooth_mesh = Mesh('Gear Tooth')
@@ -73,7 +73,7 @@ def gen_extrusion() -> Node:
         for y in [-1, 1]:
             geometry.create_vtx(x, y, -1)
     geometry.create_tri(0, 2, 1).create_tri(1, 2, 3)
-    geometry.select_vtcs(-10, -10, -10, 10, 10, 10).extrude(0, 0, 2)
+    geometry.select(-10, -10, -10, 10, 10, 10).extrude(0, 0, 2)
     
     ext = Node('Extrusion Test Block')
     ext.mesh = Mesh()
@@ -86,7 +86,7 @@ def gen_extrusion_inside_out() -> Node:
         for y in [-1, 1]:
             geometry.create_vtx(x, y, -1)
     geometry.create_tri(0, 1, 2).create_tri(1, 3, 2)
-    geometry.select_tris(-10, -10, -10, 10, 10, 10).extrude(0, 0, 2)
+    geometry.select(-10, -10, -10, 10, 10, 10).extrude(0, 0, 2)
     
     ext = Node('Extrusion Test Block')
     ext.mesh = Mesh()

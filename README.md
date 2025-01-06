@@ -39,19 +39,6 @@ Evaluation of a Python-Rust architecture for a parametric modeling project.
     - Freeze mechanism would be implemented on the Rust side, by storing freeze
       flags in Geometry structs (or in parallel arrays for GLTF structs).
     - Geometry and PackedGeometry could be merged.
-  * Remove selection by tris?
-    - Iterating over the vtcs of a tri selection requires detecting duplicate,
-      which may not be possible without additional memory allocations.
-    - Handling vtx/tri selection means 2 code paths in nearly every vtx
-      manipulation function.
-    - Actually selecting tris requires significant search overhead, beyond what
-      is required for selecting vtcs, because tri selection works by first
-      selecting vtcs and then searching for contained tris.
-    - The biggest reason for keeping tris is for cases like removing one half
-      of a 2-sided face.
-      * However, this can be done with vtx-based helpers.
-      * While tri-based functions could do this more efficiently, the overhead
-        of selecting the tris first would likely remove any perofrmance benefit.
 - Basic geometries
   * Plane
   * Some spheres
@@ -72,6 +59,24 @@ Evaluation of a Python-Rust architecture for a parametric modeling project.
   * Made a serious attempt at this and it might be impossible/impractical.
     Decorators wreak havoc on LSP and type hints, Callable classes don't work
     with LSP at all, and MicroPython won't allow setting attributes on functions
+
+## History of Design Decisions
+
+- `Geometry.select()`
+  * Used to be two functions: `.select_vtcs()` and `.select_tris()`
+  * Iterating over the vtcs of a tri selection requires detecting duplicate,
+    and I could not find a way to do that without additional memory allocations.
+  * Handling vtx/tri selection meant 2 code paths in nearly every vtx
+    manipulation function.
+  * Actually selecting tris required significant search overhead, beyond what is
+    is required for selecting vtcs, because tri selection works by first
+    selecting vtcs and then searching for contained tris.
+  * The biggest reason for keeping tris was for cases like removing one half of
+    a 2-sided face.
+    - However, this can be done with vtx-based helpers.
+    - While tri-based functions could do this more efficiently, the overhead of
+      selecting the tris first would likely have removed any perofrmance
+      benefit.
 
 ## License
 

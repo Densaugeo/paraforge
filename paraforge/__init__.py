@@ -329,15 +329,9 @@ class Geometry:
         wasm_call('geometry_scale', self._handle, float(x), float(y), float(z))
         return self
     
-    def select_vtcs(self, x1: int | float, y1: int | float, z1: int | float,
+    def select(self, x1: int | float, y1: int | float, z1: int | float,
     x2: int | float, y2: int | float, z2: int | float) -> 'Geometry':
-        wasm_call('geometry_select_vtcs', self._handle,
-            float(x1), float(y1), float(z1), float(x2), float(y2), float(z2))
-        return self
-    
-    def select_tris(self, x1: int | float, y1: int | float, z1: int | float,
-    x2: int | float, y2: int | float, z2: int | float) -> 'Geometry':
-        wasm_call('geometry_select_tris', self._handle,
+        wasm_call('geometry_select', self._handle,
             float(x1), float(y1), float(z1), float(x2), float(y2), float(z2))
         return self
     

@@ -139,19 +139,12 @@ type FFIResult<T> = Result<T, ErrorCode>;
 // Non-GLTF Data Structures //
 //////////////////////////////
 
-#[derive(PartialEq)]
-pub enum SelectionType {
-  VTCS,
-  TRIS,
-}
-
 pub struct Geometry {
   pub vtcs: Vec<V3<f64>>,
   
   pub tris: Vec<[u32; 3]>,
   
   pub selection: BTreeSet<u32>,
-  pub selection_type: SelectionType,
 }
 
 impl Geometry {
@@ -204,10 +197,6 @@ impl Geometry {
   pub fn translate(&mut self, x: f64, y: f64, z: f64) {
     let translation = V3::new(x, y, z);
     
-    // Idk how to handle iterating over tris. Maybe I should remove support for
-    // selecting by tris?
-    if self.selection_type == SelectionType::TRIS { return }
-    
     for &i in &self.selection {
       self.vtcs[i as usize] += translation;
     }
@@ -216,10 +205,6 @@ impl Geometry {
   // Apply a scale
   pub fn scale(&mut self, x: f64, y: f64, z: f64) {
     let scale = V3::new(x, y, z);
-    
-    // Idk how to handle iterating over tris. Maybe I should remove support for
-    // selecting by tris?
-    if self.selection_type == SelectionType::TRIS { return }
     
     for &i in &self.selection {
       self.vtcs[i as usize].component_mul_assign(&scale);
@@ -234,9 +219,8 @@ impl Geometry {
   
   /// Selects vertices within the bounding box defined by the given points.
   /// Allows error of 1e-6
-  pub fn select_vtcs(&mut self, bound_1: V3<f64>, bound_2: V3<f64>) {
+  pub fn select(&mut self, bound_1: V3<f64>, bound_2: V3<f64>) {
     self.selection.clear();
-    self.selection_type = SelectionType::VTCS;
     
     let lower_bound = bound_1.inf(&bound_2) - V3::new(1e-6, 1e-6, 1e-6);
     let upper_bound = bound_1.sup(&bound_2) + V3::new(1e-6, 1e-6, 1e-6);
@@ -245,24 +229,6 @@ impl Geometry {
       if lower_bound[0] < self.vtcs[i][0] && self.vtcs[i][0] < upper_bound[0] &&
          lower_bound[1] < self.vtcs[i][1] && self.vtcs[i][1] < upper_bound[1] &&
          lower_bound[2] < self.vtcs[i][2] && self.vtcs[i][2] < upper_bound[2] {
-        self.selection.insert(i as u32);
-      }
-    }
-  }
-  
-  /// Selects triangles within the bounding box defined by the given points.
-  /// Allows error of 1e-6
-  pub fn select_tris(&mut self, bound_1: V3<f64>, bound_2: V3<f64>) {
-    self.select_vtcs(bound_1, bound_2);
-    let bounded_vtcs = self.selection.clone();
-    
-    self.selection.clear();
-    self.selection_type = SelectionType::TRIS;
-    
-    for i in 0..self.tris.len() {
-      if bounded_vtcs.contains(&self.tris[i][0]) &&
-         bounded_vtcs.contains(&self.tris[i][1]) &&
-         bounded_vtcs.contains(&self.tris[i][2]) {
         self.selection.insert(i as u32);
       }
     }
@@ -319,14 +285,17 @@ impl Geometry {
   
   pub fn delete_tri(&mut self, tri: u32) {
     self.tris.swap_remove(tri as usize);
-    self.selection.clear();
   }
   
   pub fn delete_tris(&mut self) {
     // Triangles must be processed in reverse order, because deletion of lower-
     // index triangles can change the index of higher-index triangles
-    for tri in self.selection.clone().iter().rev() {
-      self.delete_tri(*tri);
+    for i in (0..self.tris.len()).rev() {
+      if self.selection.contains(&self.tris[i][0])
+      && self.selection.contains(&self.tris[i][1])
+      && self.selection.contains(&self.tris[i][2]) {
+        self.delete_tri(i as u32);
+      }
     }
   }
   
@@ -357,42 +326,18 @@ impl Geometry {
     // triangle)
     let mut edges = HashMap::new();
     
-    let all_selected = self.selection.len() == match self.selection_type {
-      SelectionType::VTCS => self.vtcs.len(),
-      SelectionType::TRIS => self.tris.len(),
-    };
-    
-    // Note: When selecting by triangles, there can be duplicate vertices in the
-    // selection
-    let vtcs_in_selection: Box<dyn Iterator<Item = u32>> =
-    match self.selection_type {
-      SelectionType::VTCS => Box::new(self.selection.iter().copied()),
-      SelectionType::TRIS => Box::new(self.selection.iter().flat_map(
-        |tri_index| self.tris[*tri_index as usize]
-      )),
-    };
+    let all_selected = self.selection.len() == self.vtcs.len();
     
     // Copy selected vertices
-    for vtx_index in vtcs_in_selection {
-      // Repeat vertices are only possible here if using triangle selection
-      if self.selection_type == SelectionType::TRIS {
-        if vtx_mapping.contains_key(&vtx_index) { continue }
-      }
-      
+    for &vtx_index in &self.selection {
       vtx_mapping.insert(vtx_index, self.vtcs.len() as u32);
       let vtx = self.vtcs[vtx_index as usize];
       self.vtcs.push(vtx + displacement);
     }
     
-    let candidate_tris: Box<dyn Iterator<Item = u32>> =
-    match self.selection_type {
-      SelectionType::VTCS => Box::new(0u32..self.tris.len() as u32),
-      SelectionType::TRIS => Box::new(self.selection.iter().copied()),
-    };
-    
     // Move/copy selected tris (tris are only copied if the entire geometry was
     // selected)
-    for tri_index in candidate_tris {
+    for tri_index in 0u32..self.tris.len() as u32 {
       let tri = &mut self.tris[tri_index as usize];
       
       let Some(&t0) = vtx_mapping.get(&tri[0]) else { continue };
@@ -445,7 +390,6 @@ impl Geometry {
     self.tris.push(V3::new(1, 2, 3).add_scalar(vtx_offset).into());
     
     self.selection.clear();
-    self.selection_type = SelectionType::VTCS;
     self.selection.extend(vtx_offset..vtx_offset + 4);
   }
   
@@ -485,7 +429,6 @@ impl Geometry {
     }
     
     self.selection.clear();
-    self.selection_type = SelectionType::VTCS;
     self.selection.extend(vtx_offset..vtx_offset + 8);
   }
   
@@ -494,7 +437,6 @@ impl Geometry {
       vtcs: Vec::new(),
       tris: Vec::new(),
       selection: BTreeSet::new(),
-      selection_type: SelectionType::VTCS,
     }
   }
   
@@ -539,7 +481,6 @@ impl Geometry {
         [2, 4, 6],
       ],
       selection: BTreeSet::from([0, 1, 2, 3, 4, 5, 6, 7]),
-      selection_type: SelectionType::VTCS,
     }
   }
   
@@ -1086,23 +1027,12 @@ fn geometry_scale(handle: usize, x: f64, y: f64, z: f64) -> FFIResult<()> {
 }
 
 #[ffi]
-fn geometry_select_vtcs(handle: usize, x1: f64, y1: f64, z1: f64, x2: f64,
+fn geometry_select(handle: usize, x1: f64, y1: f64, z1: f64, x2: f64,
 y2: f64, z2: f64) -> FFIResult<()> {
   let mut geometries = lock(&GEOMETRIES)?;
   if handle >= geometries.len() { return Err(ErrorCode::HandleOutOfBounds) };
   
-  geometries[handle].select_vtcs(V3::new(x1, y1, z1), V3::new(x2, y2, z2));
-  
-  Ok(())
-}
-
-#[ffi]
-fn geometry_select_tris(handle: usize, x1: f64, y1: f64, z1: f64, x2: f64,
-y2: f64, z2: f64) -> FFIResult<()> {
-  let mut geometries = lock(&GEOMETRIES)?;
-  if handle >= geometries.len() { return Err(ErrorCode::HandleOutOfBounds) };
-  
-  geometries[handle].select_tris(V3::new(x1, y1, z1), V3::new(x2, y2, z2));
+  geometries[handle].select(V3::new(x1, y1, z1), V3::new(x2, y2, z2));
   
   Ok(())
 }
