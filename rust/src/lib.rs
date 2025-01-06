@@ -429,6 +429,26 @@ impl Geometry {
     }
   }
   
+  //       1 ----- 3    Z  X
+  //      /       /     | /
+  //    0 ----- 2       O--Y
+  pub fn add_square(&mut self) {
+    let vtx_offset = self.vtcs.len() as u32;
+    
+    for x in [-1.0, 1.0] {
+      for y in [-1.0, 1.0] {
+        self.vtcs.push(V3::new(x, y, 0.0));
+      }
+    }
+    
+    self.tris.push(V3::new(2, 1, 0).add_scalar(vtx_offset).into());
+    self.tris.push(V3::new(1, 2, 3).add_scalar(vtx_offset).into());
+    
+    self.selection.clear();
+    self.selection_type = SelectionType::VTCS;
+    self.selection.extend(vtx_offset..vtx_offset + 4);
+  }
+  
   //       3 ----- 7
   //      /       /|
   //    1 ----- 5  |
@@ -1209,6 +1229,16 @@ fn geometry_extrude(handle: usize, x: f64, y: f64, z: f64) -> FFIResult<()> {
   if handle >= geometries.len() { return Err(ErrorCode::HandleOutOfBounds) };
   
   geometries[handle].extrude(V3::new(x, y, z));
+  
+  Ok(())
+}
+
+#[ffi]
+fn geometry_add_square(handle: usize) -> FFIResult<()> {
+  let mut geometries = lock(&GEOMETRIES)?;
+  if handle >= geometries.len() { return Err(ErrorCode::HandleOutOfBounds) };
+  
+  geometries[handle].add_square();
   
   Ok(())
 }

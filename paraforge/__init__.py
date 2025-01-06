@@ -393,6 +393,10 @@ class Geometry:
             float(x), float(y), float(z))
         return self
     
+    def add_square(self) -> 'Geometry':
+        wasm_call('geometry_add_square', self._handle)
+        return self
+    
     def add_cube(self) -> 'Geometry':
         wasm_call('geometry_add_cube', self._handle)
         return self

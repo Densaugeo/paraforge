@@ -28,6 +28,7 @@ def gen_composite_model() -> Node:
     result.add(extrusions.clone_subtree().ty(-4))
     
     # Geometry tests
-    result.add(gen_cube().tx(-4))
+    result.add(gen_cubes().tx(-4))
+    result.add(gen_squares().t(-4, -4, 0))
     
     return result

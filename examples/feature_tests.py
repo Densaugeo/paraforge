@@ -93,7 +93,7 @@ def gen_extrusion_inside_out() -> Node:
     ext.mesh.new_prim(geometry.pack(), material=Material('Blue', '#00f'))
     return ext
 
-def gen_cube() -> Node:
+def gen_cubes() -> Node:
     geometry = Geometry()
     for x in [-1, 1]:
         for y in [-1, 1]:
@@ -103,4 +103,14 @@ def gen_cube() -> Node:
     node = Node('Cube Test')
     node.mesh = Mesh()
     node.mesh.new_prim(geometry.pack(), material=Material('Yellow', '#ff0'))
+    return node
+
+def gen_squares() -> Node:
+    geometry = Geometry()
+    for x in [-1, 1]:
+        geometry.add_square().s(0.5, 0.5, 0.5).t(0.5*x, 0.5*x, 0)
+    
+    node = Node('Square Test')
+    node.mesh = Mesh()
+    node.mesh.new_prim(geometry.pack(), material=Material('Cyan', '#0ff'))
     return node
