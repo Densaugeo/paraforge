@@ -30,5 +30,6 @@ def gen_composite_model() -> Node:
     # Geometry tests
     result.add(gen_cubes().tx(-4))
     result.add(gen_squares().t(-4, -4, 0))
+    result.add(gen_extrudey_tower().t(-4, -8, 0))
     
     return result

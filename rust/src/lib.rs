@@ -193,7 +193,6 @@ impl Geometry {
     }
   }
   
-  // Apply a translation
   pub fn translate(&mut self, x: f64, y: f64, z: f64) {
     let translation = V3::new(x, y, z);
     
@@ -202,17 +201,31 @@ impl Geometry {
     }
   }
   
-  // Apply a scale
+  pub fn rotate_euler(&mut self, x: f64, y: f64, z: f64) {
+    let rotation = nalgebra::Rotation3::from_euler_angles(x, y, z);
+
+    for &i in &self.selection {
+      self.vtcs[i as usize] = rotation*self.vtcs[i as usize];
+    }
+  }
+
+  pub fn rotate_axis(&mut self, x: f64, y: f64, z: f64, ω: f64) {
+    let rotation = nalgebra::Rotation3::from_axis_angle(
+      &nalgebra::Unit::new_normalize(V3::new(x, y, z)), ω);
+
+    for &i in &self.selection {
+      self.vtcs[i as usize] = rotation*self.vtcs[i as usize];
+    }
+  }
+
   pub fn scale(&mut self, x: f64, y: f64, z: f64) {
     let scale = V3::new(x, y, z);
-    
+
     for &i in &self.selection {
       self.vtcs[i as usize].component_mul_assign(&scale);
     }
   }
-  
-  // rotations / matrices
-  
+
   // Merges
   
   // Vertex deduplication
@@ -259,7 +272,15 @@ impl Geometry {
       }
     }
     
-    self.selection.clear();
+    // The deleted vtx is removed from the selection. The vtx swapped into its
+    // place from the end might take its place in the selection, so the
+    // swapped vtx is always removed and the deleted vtx's index is selected iff
+    // the swapped one was
+    if self.selection.remove(&swapped_vtx) {
+      self.selection.insert(vtx);
+    } else {
+      self.selection.remove(&vtx);
+    }
   }
   
   /// Automatically deletes affected triangles
@@ -316,6 +337,18 @@ impl Geometry {
     }
   }
   
+  pub fn doubleside(&mut self) {
+    for i in 0..self.tris.len() {
+      let tri = self.tris[i]
+
+      if self.selection.contains(&tri[0])
+      && self.selection.contains(&tri[1])
+      && self.selection.contains(&tri[2]) {
+        self.tris.push([tri[2], tri[1], tri[0]]);
+      }
+    }
+  }
+
   pub fn extrude(&mut self, displacement: V3<f64>) {
     // Maps indices of original vertices to their extruded counterparts
     let mut vtx_mapping = HashMap::new();
@@ -372,16 +405,22 @@ impl Geometry {
       self.tris.push([key.0, *vtx_mapping.get(&key.1).unwrap(),
         *vtx_mapping.get(&key.0).unwrap()]);
     }
+
+    self.selection.clear();
+    for (_old, new) in vtx_mapping {
+      self.selection.insert(new);
+    }
   }
   
   //       1 ----- 3    Z  X
   //      /       /     | /
   //    0 ----- 2       O--Y
-  pub fn add_square(&mut self) {
+  pub fn add_square(&mut self, unit: bool) {
     let vtx_offset = self.vtcs.len() as u32;
+    let lower_bound = if unit { 0.0 } else { -1.0 };
     
-    for x in [-1.0, 1.0] {
-      for y in [-1.0, 1.0] {
+    for x in [lower_bound, 1.0] {
+      for y in [lower_bound, 1.0] {
         self.vtcs.push(V3::new(x, y, 0.0));
       }
     }
@@ -400,12 +439,13 @@ impl Geometry {
   //    |  2 ---|- 6    Z  X
   //    | /     | /     | /
   //    0 ----- 4       O--Y
-  pub fn add_cube(&mut self) {
+  pub fn add_cube(&mut self, unit: bool) {
     let vtx_offset = self.vtcs.len() as u32;
-    
-    for x in [-1.0, 1.0] {
-      for y in [-1.0, 1.0] {
-        for z in [-1.0, 1.0] {
+    let lower_bound = if unit { 0.0 } else { -1.0 };
+
+    for x in [lower_bound, 1.0] {
+      for y in [lower_bound, 1.0] {
+        for z in [lower_bound, 1.0] {
           self.vtcs.push(V3::new(x, y, z));
         }
       }
@@ -1017,6 +1057,28 @@ fn geometry_translate(handle: usize, x: f64, y: f64, z: f64) -> FFIResult<()> {
 }
 
 #[ffi]
+fn geometry_rotate_euler(handle: usize, x: f64, y: f64, z: f64)
+-> FFIResult<()> {
+  let mut geometries = lock(&GEOMETRIES)?;
+  if handle >= geometries.len() { return Err(ErrorCode::HandleOutOfBounds) };
+
+  geometries[handle].rotate_euler(x, y, z);
+
+  Ok(())
+}
+
+#[ffi]
+fn geometry_rotate_axis(handle: usize, x: f64, y: f64, z: f64, ω: f64)
+-> FFIResult<()> {
+  let mut geometries = lock(&GEOMETRIES)?;
+  if handle >= geometries.len() { return Err(ErrorCode::HandleOutOfBounds) };
+
+  geometries[handle].rotate_axis(x, y, z, ω);
+
+  Ok(())
+}
+
+#[ffi]
 fn geometry_scale(handle: usize, x: f64, y: f64, z: f64) -> FFIResult<()> {
   let mut geometries = lock(&GEOMETRIES)?;
   if handle >= geometries.len() { return Err(ErrorCode::HandleOutOfBounds) };
@@ -1108,6 +1170,16 @@ fn geometry_delete_stray_vtcs(handle: usize) -> FFIResult<()> {
 }
 
 #[ffi]
+fn geometry_doubleside(handle: usize) -> FFIResult<()> {
+  let mut geometries = lock(&GEOMETRIES)?;
+  if handle >= geometries.len() { return Err(ErrorCode::HandleOutOfBounds) };
+
+  geometries[handle].doubleside();
+
+  Ok(())
+}
+
+#[ffi]
 fn geometry_set_vtx(handle: usize, vtx: u32, x: f64, y: f64, z: f64)
 -> FFIResult<()> {
   let mut geometries = lock(&GEOMETRIES)?;
@@ -1164,21 +1236,21 @@ fn geometry_extrude(handle: usize, x: f64, y: f64, z: f64) -> FFIResult<()> {
 }
 
 #[ffi]
-fn geometry_add_square(handle: usize) -> FFIResult<()> {
+fn geometry_add_square(handle: usize, unit: u32) -> FFIResult<()> {
   let mut geometries = lock(&GEOMETRIES)?;
   if handle >= geometries.len() { return Err(ErrorCode::HandleOutOfBounds) };
   
-  geometries[handle].add_square();
+  geometries[handle].add_square(unit != 0);
   
   Ok(())
 }
 
 #[ffi]
-fn geometry_add_cube(handle: usize) -> FFIResult<()> {
+fn geometry_add_cube(handle: usize, unit: u32) -> FFIResult<()> {
   let mut geometries = lock(&GEOMETRIES)?;
   if handle >= geometries.len() { return Err(ErrorCode::HandleOutOfBounds) };
   
-  geometries[handle].add_cube();
+  geometries[handle].add_cube(unit != 0);
   
   Ok(())
 }

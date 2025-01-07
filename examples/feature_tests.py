@@ -107,10 +107,25 @@ def gen_cubes() -> Node:
 
 def gen_squares() -> Node:
     geometry = Geometry()
-    for x in [-1, 1]:
-        geometry.add_square().s(0.5, 0.5, 0.5).t(0.5*x, 0.5*x, 0)
-    
+    geometry.add_square(unit=True)
+    geometry.add_square(unit=True).t(-1, -1, 0)
+    geometry.add_square().rotate_euler(π/2, 0, 0).sz(0.25)
+    geometry.add_square().rotate_axis(0, 1, 0, π/2).sz(0.25)
+    geometry.select(-10, -10, -10, 10, 10, 10).doubleside()
+
     node = Node('Square Test')
+    node.mesh = Mesh()
+    node.mesh.new_prim(geometry.pack(), material=Material('Cyan', '#0ff'))
+    return node
+
+def gen_extrudey_tower() -> Node:
+    geometry = Geometry()
+    geometry.add_square()\
+        .extrude(0, 0, 1).scale(0.5, 0.5, 1)\
+        .extrude(0, 0, 1).scale(0.5, 0.5, 1)\
+        .extrude(0, 0, 1).scale(0.5, 0.5, 1)
+
+    node = Node('Extrudey Tower')
     node.mesh = Mesh()
     node.mesh.new_prim(geometry.pack(), material=Material('Cyan', '#0ff'))
     return node

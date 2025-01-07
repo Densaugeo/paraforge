@@ -317,6 +317,18 @@ class Geometry:
             float(z))
         return self
     
+    def rotate_euler(self, x: int | float, y: int | float, z: int | float,
+    ) -> 'Geometry':
+        wasm_call('geometry_rotate_euler', self._handle, float(x), float(y),
+            float(z))
+        return self
+
+    def rotate_axis(self, x: int | float, y: int | float, z: int | float,
+    ω: int | float) -> 'Geometry':
+        wasm_call('geometry_rotate_axis', self._handle, float(x), float(y),
+            float(z), float(ω))
+        return self
+
     def s(self, x: int | float, y: int | float, z: int | float) -> 'Geometry':
         return self.scale(x, y, z)
     
@@ -365,6 +377,10 @@ class Geometry:
         wasm_call('geometry_delete_stray_vtcs', self._handle)
         return self
     
+    def doubleside(self) -> 'Geometry':
+        wasm_call('geometry_doubleside', self._handle)
+        return self
+
     def set_vtx(self, vtx: int, x: int | float, y: int | float, z: int | float
     ) -> 'Geometry':
         wasm_call('geometry_set_vtx', self._handle, vtx,
@@ -387,12 +403,20 @@ class Geometry:
             float(x), float(y), float(z))
         return self
     
-    def add_square(self) -> 'Geometry':
-        wasm_call('geometry_add_square', self._handle)
+    def add_square(self, unit: bool = False) -> 'Geometry':
+        '''
+        If unit is set, new vtcs are bounded by 0..1 on each axis. Otherwise,
+        new vtcs are centered about the origin and bounded by -1..1.
+        '''
+        wasm_call('geometry_add_square', self._handle, int(unit))
         return self
     
-    def add_cube(self) -> 'Geometry':
-        wasm_call('geometry_add_cube', self._handle)
+    def add_cube(self, unit: bool = False) -> 'Geometry':
+        '''
+        If unit is set, new vtcs are bounded by 0..1 on each axis. Otherwise,
+        new vtcs are centered about the origin and bounded by -1..1.
+        '''
+        wasm_call('geometry_add_cube', self._handle, int(unit))
         return self
     
     def pack(self) -> PackedGeometry:
