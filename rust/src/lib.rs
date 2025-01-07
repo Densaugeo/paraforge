@@ -339,7 +339,7 @@ impl Geometry {
   
   pub fn doubleside(&mut self) {
     for i in 0..self.tris.len() {
-      let tri = self.tris[i]
+      let tri = self.tris[i];
 
       if self.selection.contains(&tri[0])
       && self.selection.contains(&tri[1])
