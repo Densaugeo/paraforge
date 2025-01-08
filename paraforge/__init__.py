@@ -377,10 +377,18 @@ class Geometry:
         wasm_call('geometry_delete_stray_vtcs', self._handle)
         return self
     
+    def flip_normals(self) -> 'Geometry':
+        wasm_call('geometry_flip_normals', self._handle)
+        return self
+    
     def doubleside(self) -> 'Geometry':
         wasm_call('geometry_doubleside', self._handle)
         return self
-
+    
+    def copy(self) -> 'Geometry':
+        wasm_call('geometry_copy', self._handle)
+        return self
+    
     def set_vtx(self, vtx: int, x: int | float, y: int | float, z: int | float
     ) -> 'Geometry':
         wasm_call('geometry_set_vtx', self._handle, vtx,

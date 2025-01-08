@@ -208,24 +208,29 @@ impl Geometry {
       self.vtcs[i as usize] = rotation*self.vtcs[i as usize];
     }
   }
-
+  
   pub fn rotate_axis(&mut self, x: f64, y: f64, z: f64, ω: f64) {
     let rotation = nalgebra::Rotation3::from_axis_angle(
       &nalgebra::Unit::new_normalize(V3::new(x, y, z)), ω);
-
+    
     for &i in &self.selection {
       self.vtcs[i as usize] = rotation*self.vtcs[i as usize];
     }
   }
-
+  
   pub fn scale(&mut self, x: f64, y: f64, z: f64) {
     let scale = V3::new(x, y, z);
-
+    
     for &i in &self.selection {
       self.vtcs[i as usize].component_mul_assign(&scale);
     }
+    
+    let minus_signs = scale.map(|v| (v < 0.0) as u8 ).sum();
+    if minus_signs % 2 == 1 {
+      self.flip_normals();
+    }
   }
-
+  
   // Merges
   
   // Vertex deduplication
@@ -337,10 +342,22 @@ impl Geometry {
     }
   }
   
+  pub fn flip_normals(&mut self) {
+    for tri in &mut self.tris {
+      if self.selection.contains(&tri[0])
+      && self.selection.contains(&tri[1])
+      && self.selection.contains(&tri[2]) {
+        let [a, _b, c] = *tri;
+        tri[2] = a;
+        tri[0] = c;
+      }
+    }
+  }
+  
   pub fn doubleside(&mut self) {
     for i in 0..self.tris.len() {
       let tri = self.tris[i];
-
+      
       if self.selection.contains(&tri[0])
       && self.selection.contains(&tri[1])
       && self.selection.contains(&tri[2]) {
@@ -348,7 +365,34 @@ impl Geometry {
       }
     }
   }
-
+  
+  pub fn copy(&mut self) {
+    // Maps indices of original vertices to their copied counterparts
+    let mut vtx_mapping = HashMap::new();
+    
+    // Copy selected vertices
+    for &vtx_index in &self.selection {
+      vtx_mapping.insert(vtx_index, self.vtcs.len() as u32);
+      self.vtcs.push(self.vtcs[vtx_index as usize]);
+    }
+    
+    // Copy selected tris
+    for tri_index in 0..self.tris.len() {
+      let tri = &mut self.tris[tri_index];
+      
+      let Some(&t0) = vtx_mapping.get(&tri[0]) else { continue };
+      let Some(&t1) = vtx_mapping.get(&tri[1]) else { continue };
+      let Some(&t2) = vtx_mapping.get(&tri[2]) else { continue };
+      
+      self.tris.push([t0, t1, t2]);
+    }
+    
+    self.selection.clear();
+    for (_old, new) in vtx_mapping {
+      self.selection.insert(new);
+    }
+  }
+  
   pub fn extrude(&mut self, displacement: V3<f64>) {
     // Maps indices of original vertices to their extruded counterparts
     let mut vtx_mapping = HashMap::new();
@@ -1170,12 +1214,32 @@ fn geometry_delete_stray_vtcs(handle: usize) -> FFIResult<()> {
 }
 
 #[ffi]
+fn geometry_flip_normals(handle: usize) -> FFIResult<()> {
+  let mut geometries = lock(&GEOMETRIES)?;
+  if handle >= geometries.len() { return Err(ErrorCode::HandleOutOfBounds) };
+
+  geometries[handle].flip_normals();
+
+  Ok(())
+}
+
+#[ffi]
 fn geometry_doubleside(handle: usize) -> FFIResult<()> {
   let mut geometries = lock(&GEOMETRIES)?;
   if handle >= geometries.len() { return Err(ErrorCode::HandleOutOfBounds) };
 
   geometries[handle].doubleside();
 
+  Ok(())
+}
+
+#[ffi]
+fn geometry_copy(handle: usize) -> FFIResult<()> {
+  let mut geometries = lock(&GEOMETRIES)?;
+  if handle >= geometries.len() { return Err(ErrorCode::HandleOutOfBounds) };
+  
+  geometries[handle].copy();
+  
   Ok(())
 }
 
