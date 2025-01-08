@@ -8,8 +8,6 @@ Evaluation of a Python-Rust architecture for a parametric modeling project.
   * Select all vtcs/tris
   * Every function that handles vtx/tri indices should check bounds
   * Clear selection
-  * Geometry operations update selection in sane ways
-  * TRS transforms apply selection
 - Code cleanup
   * Create function for loading new script files into VM
     - Simplest way I can think of for allowing imports from any URL
@@ -40,7 +38,6 @@ Evaluation of a Python-Rust architecture for a parametric modeling project.
       flags in Geometry structs (or in parallel arrays for GLTF structs).
     - Geometry and PackedGeometry could be merged.
 - Basic geometries
-  * Plane
   * Some spheres
   * Cylinder
   * Circle
@@ -52,6 +49,8 @@ Evaluation of a Python-Rust architecture for a parametric modeling project.
   * Handle multiple models at once. I'm really going to need that for testing
   * 'Gen' shortcut functions need restoring - should be able to automatically
     load necessary python scripts and pass in args / kwargs
+  * When I try to add a code editor - look into Monaco. Apparently MS packaged
+    the insides of VSCode for bundling into web sites.
 - Generator parameters apparently need a lot of work
   * Way of specifying metadata like bounds, step, display name
   * Automated enforcement of bounds
