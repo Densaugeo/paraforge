@@ -262,17 +262,21 @@ impl Geometry {
     self.vtcs.swap_remove(vtx as usize);
     let swapped_vtx = self.vtcs.len() as u32;
     
-    for i in 0..self.tris.len() {
+    let mut i = 0;
+    while i < self.tris.len() {
       // Delete triangle if it includes deleted vertex
       if self.tris[i].contains(&vtx) {
         self.tris.swap_remove(i);
-        continue;
+      } else {
+        i += 1;
       }
-      
+    }
+    
+    for i in 0..self.tris.len() {
       // Update indices if swapped vertex is referenced
-      for j in 0..2 {
+      for j in 0..3 {
         if self.tris[i][j] == swapped_vtx {
-          self.tris[i][j] = vtx
+          self.tris[i][j] = vtx;
         }
       }
     }
