@@ -6,6 +6,9 @@ pub use nalgebra::Vector3 as V3;
 
 use paraforge_macros::ffi;
 
+#[allow(non_upper_case_globals)]
+const π: f64 = std::f64::consts::PI;
+
 /////////////
 // Statics //
 /////////////
@@ -460,9 +463,9 @@ impl Geometry {
     }
   }
   
-  //       1 ----- 3    Z  X
+  //       1 ----- 3    Z  Y
   //      /       /     | /
-  //    0 ----- 2       O--Y
+  //    0 ----- 2       O--X
   pub fn add_square(&mut self, unit: bool) {
     let vtx_offset = self.vtcs.len() as u32;
     let lower_bound = if unit { 0.0 } else { -1.0 };
@@ -484,9 +487,9 @@ impl Geometry {
   //      /       /|
   //    1 ----- 5  |
   //    |  |    |  |
-  //    |  2 ---|- 6    Z  X
+  //    |  2 ---|- 6    Z  Y
   //    | /     | /     | /
-  //    0 ----- 4       O--Y
+  //    0 ----- 4       O--X
   pub fn add_cube(&mut self, unit: bool) {
     let vtx_offset = self.vtcs.len() as u32;
     let lower_bound = if unit { 0.0 } else { -1.0 };
@@ -518,6 +521,66 @@ impl Geometry {
     
     self.selection.clear();
     self.selection.extend(vtx_offset..vtx_offset + 8);
+  }
+  
+  //       /- 3 -\
+  //      4       2
+  //     /         \
+  //    5     0     1
+  //     \         /     Y
+  //      6       8      |
+  //       \- 7 -/       O--X
+  pub fn add_circle(&mut self, segments: u32) {
+    let vtx_offset = self.vtcs.len() as u32;
+    
+    self.vtcs.push(V3::new(0.0, 0.0, 0.0));
+    for i in 0..segments {
+      let θ = 2.0*π*(i as f64)/(segments as f64);
+      self.vtcs.push(V3::new(f64::cos(θ), f64::sin(θ), 0.0));
+      
+      self.tris.push([
+        vtx_offset,
+        vtx_offset + i + 1,
+        vtx_offset + ((i + 1) % segments) + 1,
+      ]);
+    }
+    
+    self.selection.clear();
+    self.selection.extend(vtx_offset..vtx_offset + segments + 1);
+  }
+  
+  // Not going to ASCII art this one...it's like the circle, but 2 circles are
+  // built together, so the first circle has even number vtcs and the second has
+  // odd vtcs.
+  pub fn add_cylinder(&mut self, segments: u32) {
+    let vtx_offset = self.vtcs.len() as u32;
+    
+    // Centers of circles
+    self.vtcs.push(V3::new(0.0, 0.0, 0.0));
+    self.vtcs.push(V3::new(0.0, 0.0, 1.0));
+    
+    for i in 0..segments {
+      let θ = 2.0*π*(i as f64)/(segments as f64);
+      
+      // Vtcs on edge of circles
+      self.vtcs.push(V3::new(f64::cos(θ), f64::sin(θ), 0.0));
+      self.vtcs.push(V3::new(f64::cos(θ), f64::sin(θ), 1.0));
+      
+      // let offset = vtx_offset + 2*i - 2;
+      let v_1 = vtx_offset + 2*(i + 1);
+      let v_2 = vtx_offset + 2*((i + 1) % segments) + 2;
+      
+      // Tris in circles
+      self.tris.push([vtx_offset, v_2, v_1]);
+      self.tris.push([vtx_offset + 1, v_1 + 1, v_2 + 1]);
+      
+      // Tris on side walls
+      self.tris.push([v_1, v_2, v_1 + 1]);
+      self.tris.push([v_1 + 1, v_2, v_2 + 1]);
+    }
+    
+    self.selection.clear();
+    self.selection.extend(vtx_offset..vtx_offset + 2*segments + 2);
   }
   
   pub fn new() -> Self {
@@ -1319,6 +1382,26 @@ fn geometry_add_cube(handle: usize, unit: u32) -> FFIResult<()> {
   if handle >= geometries.len() { return Err(ErrorCode::HandleOutOfBounds) };
   
   geometries[handle].add_cube(unit != 0);
+  
+  Ok(())
+}
+
+#[ffi]
+fn geometry_add_circle(handle: usize, segments: u32) -> FFIResult<()> {
+  let mut geometries = lock(&GEOMETRIES)?;
+  if handle >= geometries.len() { return Err(ErrorCode::HandleOutOfBounds) };
+  
+  geometries[handle].add_circle(segments);
+  
+  Ok(())
+}
+
+#[ffi]
+fn geometry_add_cylinder(handle: usize, segments: u32) -> FFIResult<()> {
+  let mut geometries = lock(&GEOMETRIES)?;
+  if handle >= geometries.len() { return Err(ErrorCode::HandleOutOfBounds) };
+  
+  geometries[handle].add_cylinder(segments);
   
   Ok(())
 }

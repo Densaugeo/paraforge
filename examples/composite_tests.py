@@ -31,5 +31,6 @@ def gen_composite_model() -> Node:
     result.add(gen_cubes().tx(-4))
     result.add(gen_squares().t(-4, -4, 0))
     result.add(gen_extrudey_tower().t(-4, -8, 0))
+    result.add(gen_circle_and_cylinder().ty(-8))
     
     return result

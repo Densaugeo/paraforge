@@ -112,7 +112,7 @@ def gen_squares() -> Node:
     geometry.add_square().rotate_euler(π/2, 0, 0).sz(0.25)
     geometry.add_square().rotate_axis(0, 1, 0, π/2).sz(0.25)
     geometry.select(-10, -10, -10, 10, 10, 10).doubleside()
-
+    
     node = Node('Square Test')
     node.mesh = Mesh()
     node.mesh.new_prim(geometry.pack(), material=Material('Cyan', '#0ff'))
@@ -124,8 +124,22 @@ def gen_extrudey_tower() -> Node:
         .extrude(0, 0, 1).scale(0.5, 0.5, 1)\
         .extrude(0, 0, 1).scale(0.5, 0.5, 1)\
         .extrude(0, 0, 1).scale(0.5, 0.5, 1)
-
+    
     node = Node('Extrudey Tower')
     node.mesh = Mesh()
     node.mesh.new_prim(geometry.pack(), material=Material('Cyan', '#0ff'))
+    return node
+
+def gen_circle_and_cylinder() -> Node:
+    geometry = Geometry()\
+        .add_circle().s(0.5, 0.5, 1).t(-0.5, -0.5, 0)\
+        .add_cylinder().s(0.5, 0.5, 1).t(-0.5, 0.5, 0)\
+        .add_circle().s(0.5, 0.5, 1).t(0.5, -0.5, 0).extrude(0, 0, -1)\
+        .add_circle().s(0.5, 0.5, 1).t(0.5, -0.5, 0).flip_normals()\
+            .extrude(0, 0, -1)\
+        .add_cylinder(32).s(0.5, 0.5, 2).t(0.5, 0.5, 0)
+    
+    node = Node('Circles and cylinders')
+    node.mesh = Mesh()
+    node.mesh.new_prim(geometry.pack(), material=Material('Magenta', '#f0f'))
     return node
