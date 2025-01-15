@@ -431,8 +431,8 @@ class Geometry:
         wasm_call('geometry_add_circle', self._handle, segments)
         return self
     
-    def add_cylinder(self, segments: int = 8) -> 'Geometry':
-        wasm_call('geometry_add_cylinder', self._handle, segments)
+    def add_cylinder(self, segments: int = 8, unit: bool = False) -> 'Geometry':
+        wasm_call('geometry_add_cylinder', self._handle, segments, int(unit))
         return self
     
     def pack(self) -> PackedGeometry:

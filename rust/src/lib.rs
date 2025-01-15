@@ -552,18 +552,19 @@ impl Geometry {
   // Not going to ASCII art this one...it's like the circle, but 2 circles are
   // built together, so the first circle has even number vtcs and the second has
   // odd vtcs.
-  pub fn add_cylinder(&mut self, segments: u32) {
+  pub fn add_cylinder(&mut self, segments: u32, unit: bool) {
     let vtx_offset = self.vtcs.len() as u32;
+    let lower_bound = if unit { 0.0 } else { -1.0 };
     
     // Centers of circles
-    self.vtcs.push(V3::new(0.0, 0.0, 0.0));
+    self.vtcs.push(V3::new(0.0, 0.0, lower_bound));
     self.vtcs.push(V3::new(0.0, 0.0, 1.0));
     
     for i in 0..segments {
       let θ = 2.0*π*(i as f64)/(segments as f64);
       
       // Vtcs on edge of circles
-      self.vtcs.push(V3::new(f64::cos(θ), f64::sin(θ), 0.0));
+      self.vtcs.push(V3::new(f64::cos(θ), f64::sin(θ), lower_bound));
       self.vtcs.push(V3::new(f64::cos(θ), f64::sin(θ), 1.0));
       
       // let offset = vtx_offset + 2*i - 2;
@@ -1397,11 +1398,12 @@ fn geometry_add_circle(handle: usize, segments: u32) -> FFIResult<()> {
 }
 
 #[ffi]
-fn geometry_add_cylinder(handle: usize, segments: u32) -> FFIResult<()> {
+fn geometry_add_cylinder(handle: usize, segments: u32, unit: u32,
+) -> FFIResult<()> {
   let mut geometries = lock(&GEOMETRIES)?;
   if handle >= geometries.len() { return Err(ErrorCode::HandleOutOfBounds) };
   
-  geometries[handle].add_cylinder(segments);
+  geometries[handle].add_cylinder(segments, unit != 0);
   
   Ok(())
 }

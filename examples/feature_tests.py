@@ -133,11 +133,11 @@ def gen_extrudey_tower() -> Node:
 def gen_circle_and_cylinder() -> Node:
     geometry = Geometry()\
         .add_circle().s(0.5, 0.5, 1).t(-0.5, -0.5, 0)\
-        .add_cylinder().s(0.5, 0.5, 1).t(-0.5, 0.5, 0)\
+        .add_cylinder().s(0.5, 0.5, 0.5).t(-0.5, 0.5, 0.5)\
         .add_circle().s(0.5, 0.5, 1).t(0.5, -0.5, 0).extrude(0, 0, -1)\
         .add_circle().s(0.5, 0.5, 1).t(0.5, -0.5, 0).flip_normals()\
             .extrude(0, 0, -1)\
-        .add_cylinder(32).s(0.5, 0.5, 2).t(0.5, 0.5, 0)
+        .add_cylinder(32).s(0.5, 0.5, 1).t(0.5, 0.5, 1)
     
     node = Node('Circles and cylinders')
     node.mesh = Mesh()
