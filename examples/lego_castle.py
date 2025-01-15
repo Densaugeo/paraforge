@@ -43,30 +43,31 @@ def gen_first_model(gates: int = 0) -> Node:
         .add_cube(unit=True).s(2, 2, 1).t(-5, -6, 13 + 1/3)\
         .add_cube(unit=True).s(2, 2, 1).t(-5, -7, 12 + 1/3)
     
-    tower_arches = Geometry()
-    tower_arches.add_square(unit=True).s(1, 2, 1).rotate_euler(-pi/2, 0, 0)\
-        .t(-4, -3, 16 + 1/3)
-    tower_arches.extrude(0, 1, 0)
-    tower_arches.extrude(0, 1, 0).tz(-16 - 1/3).sz(0.5).tz(16 + 1/3)
-    tower_arches.extrude(0, 1, 0).tz(-16 - 1/3).sz(0.5).tz(16 + 1/3)
-    tower_arches.extrude(0, 1, 0).tz(-16 - 1/3).sz(2  ).tz(16 + 1/3)
-    tower_arches.extrude(0, 1, 0).tz(-16 - 1/3).sz(2  ).tz(16 + 1/3)
-    tower_arches.extrude(0, 1, 0)
     r = 2
-    tower_arches_2 = Geometry()
-    tower_arches_2.add_cylinder(32).s(r, r/1.2, 1)\
-        .rotate_euler(pi/2, 0, 0)#.t(0, -6, 17)
-    tower_arches_2.delete_vtx(0)
-    tower_arches_2.delete_vtx(1)
-    tower_arches_2.select(-100, -100, -100, 100, 100, -0.1)\
-        .delete_vtcs()
-    tower_arches_2.select(-100, -100, -100, 100, 100, 10)
-    tower_arches_2.extrude(0, 0, 4)
-    tower_arches_2.select(-100, -100, -100, 100, 100, 10)
-    tower_arches_2.t(0, -6, 17)
+    tower_arches = Geometry()\
+        .add_cylinder(32).s(r, r/1.2, 0.5).rotate_euler(pi/2, 0, 0)
     
-    tower_roof = Geometry()
-    tower_roof.add_cube(unit=True).s(8, 8, 1/3).t(-4, -4, 17 + 1/3)
+    # Knock out some vtcs to make a half-circle
+    tower_arches.delete_vtx(0).delete_vtx(1)
+    tower_arches.select(-100, -100, -100, 100, 100, -0.1).delete_vtcs()
+    
+    # Extrude. The upper half of the extrusion will turn into the outside of the
+    # arch
+    tower_arches.select(-100, -100, -100, 100, 100, 100).extrude(0, 0, 20)
+    
+    # Merge vertices on the upper extrusion to form a rectangular outside, still
+    # bonded to the half-circle
+    for xs in [-1, 1]:
+        for ys in [-1, 1]:
+            tower_arches\
+                .select(100*xs, 100*ys, 10, r*xs, 0, 100)\
+                .merge((r + 1)*xs, 0.5*ys, 0)\
+                .select(100*xs, 100*ys, 10,    0, 0, 100)\
+                .merge((r + 1)*xs, 0.5*ys, 2)
+    
+    tower_arches.select(-100, -100, -100, 100, 100, 100).t(0, -3.5, 14 + 1/3)
+    
+    tower_roof = Geometry().add_cube(unit=True).s(8, 8, 1/3).t(-4, -4, 17 + 1/3)
     
     outer_frame = Geometry()
     
@@ -139,7 +140,6 @@ def gen_first_model(gates: int = 0) -> Node:
     node.mesh.new_prim(walkway_battlements.pack(), material=black )
     node.mesh.new_prim(tower_frame        .pack(), material=yellow)
     node.mesh.new_prim(tower_arches       .pack(), material=black )
-    node.mesh.new_prim(tower_arches_2     .pack(), material=black )
     node.mesh.new_prim(tower_roof         .pack(), material=gray  )
     node.tz(-17).sz(1.2)
     return node
