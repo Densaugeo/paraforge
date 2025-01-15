@@ -143,3 +143,16 @@ def gen_circle_and_cylinder() -> Node:
     node.mesh = Mesh()
     node.mesh.new_prim(geometry.pack(), material=Material('Magenta', '#f0f'))
     return node
+
+def gen_merged_pillar() -> Node:
+    geometry = Geometry().add_square()
+    for _ in range(4):
+        geometry.extrude(0, 0, 1)
+    
+    geometry.select(-10, -10, 1, 10, 10, 1).merge(0, 0, 1)
+    geometry.select(-10, -10, 3, 10, 10, 3).merge(0, 0, 3)
+    
+    node = Node('Made with merges')
+    node.mesh = Mesh()
+    node.mesh.new_prim(geometry.pack(), material=Material('Cyan', '#0ff'))
+    return node

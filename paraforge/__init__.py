@@ -377,6 +377,11 @@ class Geometry:
         wasm_call('geometry_delete_stray_vtcs', self._handle)
         return self
     
+    def merge(self, x: int | float, y: int | float, z: int | float,
+    ) -> 'Geometry':
+        wasm_call('geometry_merge', self._handle, float(x), float(y), float(z))
+        return self
+    
     def flip_normals(self) -> 'Geometry':
         wasm_call('geometry_flip_normals', self._handle)
         return self

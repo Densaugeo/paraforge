@@ -234,8 +234,6 @@ impl Geometry {
     }
   }
   
-  // Merges
-  
   // Vertex deduplication
   
   /// Selects vertices within the bounding box defined by the given points.
@@ -347,6 +345,29 @@ impl Geometry {
         self.delete_vtx(vtx as u32);
       }
     }
+  }
+  
+  pub fn merge(&mut self, location: V3<f64>) {
+    let Some(target_vtx) = self.selection.pop_first() else { return; };
+    self.vtcs[target_vtx as usize] = location;
+    
+    for tri in &mut self.tris {
+      for vtx in tri {
+        if self.selection.contains(vtx) {
+          *vtx = target_vtx;
+        }
+      }
+    }
+    
+    // .delete_vtcs() is somewhat inefficient because it triggers a search of
+    // the tris for every vtx, but deleting the vtcs involves enough edge cases
+    // with vtcs moving due to .swap_remove() that I'm using it anyway. In the
+    // future an option to skip tri searches for the target vtx could be added
+    // to .delete_vtcs() as an optimization.
+    self.delete_vtcs();
+    
+    self.selection.clear();
+    self.selection.insert(target_vtx);
   }
   
   pub fn flip_normals(&mut self) {
@@ -1277,6 +1298,16 @@ fn geometry_delete_stray_vtcs(handle: usize) -> FFIResult<()> {
   if handle >= geometries.len() { return Err(ErrorCode::HandleOutOfBounds) };
   
   geometries[handle].delete_stray_vtcs();
+  
+  Ok(())
+}
+
+#[ffi]
+fn geometry_merge(handle: usize, x: f64, y: f64, z: f64) -> FFIResult<()> {
+  let mut geometries = lock(&GEOMETRIES)?;
+  if handle >= geometries.len() { return Err(ErrorCode::HandleOutOfBounds) };
+  
+  geometries[handle].merge(V3::new(x, y, z));
   
   Ok(())
 }
