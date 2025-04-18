@@ -287,7 +287,12 @@ export class ParaforgeViewer extends HTMLElement {
     await this.paraforge.init()
     ui_panels.generatorPanel.content.paraforge = this.paraforge
     
-    this.paraforge.on('gen', async () => {
+    this.paraforge.on('gen', async e => {
+      localStorage.paraforge = JSON.stringify({
+        files: e.target.files,
+        last_gen: e.target.last_gen,
+      })
+      
       const glb = await this.paraforge.serialize()
       
       this.gltf_loader.parse(glb.buffer, '', gltf => {
@@ -298,7 +303,18 @@ export class ParaforgeViewer extends HTMLElement {
     })
     
     // Need to have that event handler up before restoring state!
-    await ui_panels.generatorPanel.content.restore_state()
+    if(!localStorage.paraforge) return
+    
+    const state = JSON.parse(localStorage.paraforge)
+    
+    for(const [path, url] of Object.entries(state.files)) {
+      if(!this.paraforge.files.hasOwnProperty(path)) {
+        await this.paraforge.add_file(path, url)
+      }
+    }
+    
+    await this.paraforge.execute(state.last_gen.script,
+      state.last_gen.generator, state.last_gen.python_args)
   }
   
   /**

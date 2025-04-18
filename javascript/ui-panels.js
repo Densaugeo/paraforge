@@ -286,31 +286,6 @@ export class DenGeneratorUI extends HTMLElement {
       inputs[i].value = v
       inputs[i].classList.add('confirmed')
     })
-    
-    const scripts = {}
-    for(const value of Object.values(e.target.scripts)) {
-      scripts[value.path] = value.url
-    }
-    
-    localStorage[this._localStorage_id] = JSON.stringify({
-      last_gen: e.target.last_gen,
-      scripts,
-    })
-  }
-  
-  async restore_state() {
-    if(!localStorage[this._localStorage_id]) return
-    
-    const state = JSON.parse(localStorage[this._localStorage_id])
-    
-    for(const [path, url] of Object.entries(state.scripts)) {
-      if(!this.paraforge.scripts.hasOwnProperty(path.slice(1, -3))) {
-        await this.paraforge.add_file(path, url)
-      }
-    }
-    
-    await this.paraforge.execute(state.last_gen.script,
-      state.last_gen.generator, state.last_gen.python_args)
   }
   
   /** @type {HTMLInputElement | null} */
@@ -326,9 +301,6 @@ export class DenGeneratorUI extends HTMLElement {
   /** @type {string} */
   get generator() { return this._generator_input?.value ?? '' }
   set generator(v) { if(this._generator_input) this._generator_input.value = v }
-  
-  /** @type {string | null} */
-  _localStorage_id = null
   
   constructor() {
     super()
@@ -401,18 +373,6 @@ export class DenGeneratorUI extends HTMLElement {
         e.stopPropagation()
       }
     })
-    
-    // Save ._localStorage_id for persisting state. ID is a full path to this
-    // component using element IDs (or tag names if those aren't available).
-    // This will hopefully allow persistence with mutliple instances (provided
-    // each Viewer instance has its own ID).
-    let path = []
-    
-    for(let cursor = this; cursor; cursor = cursor.getRootNode()?.host) {
-      path.unshift(cursor.id || cursor.tagName)
-    }
-    
-    this._localStorage_id = path.join('.')
   }
   
   render() {

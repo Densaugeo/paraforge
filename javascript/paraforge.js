@@ -57,6 +57,10 @@ export class Paraforge extends EventTarget {
     super()
     
     this.verbosity = verbosity
+    // this.files is used by calling programs for save/restore with
+    // localStorage. this.scripts is used by UI for querying available scripts.
+    // Is this the best way to organize this data? Probably not.
+    this.files = {}
     this.scripts = {}
     this.last_gen = null
     
@@ -166,7 +170,11 @@ export class Paraforge extends EventTarget {
    */
   async add_file(path, contents) {
     let contents_
-    if(contents instanceof ArrayBuffer) contents_ = contents
+    if(contents instanceof ArrayBuffer) {
+      contents_ = contents
+      throw new Error('Not sure settings file contents without a URL can ' +
+        'really be supported here. Remove?')
+    }
     if(typeof contents === 'string') {
       const res = await fetch(contents, { cache: 'no-cache' })
       if(!res.ok) throw new Error(`Unable to download file "${contents}": ` +
@@ -178,6 +186,8 @@ export class Paraforge extends EventTarget {
       path,
       contents: contents_,
     })
+    
+    this.files[path] = contents
     
     // Checking if file should be added to .scripts. This check is the same as
     // the check used to filter responses to list_scripts() in the worker thread

@@ -98,6 +98,27 @@ EventTarget.prototype.emit = function emit(type, properties) {
   this.dispatchEvent(e)
 }
 
+/**
+ * Traverses the tree up from a tag and produces a string describing its
+ * position in the DOM using element IDs (or tag names if those aren't
+ * available). Able to traverse through shadow DOMs.
+ * 
+ * Originally created to allow persisting multiple Paraforge viewers to
+ * localStorage, now I might keep it around as a debug tool.
+ * 
+ * @param {HTMLElement} tag
+ * @returns {Text}
+ */
+export const tree_string = tag => {
+  let path = []
+  
+  for(let cursor = tag; cursor; cursor = cursor.getRootNode()?.host) {
+    path.unshift(cursor.id || cursor.tagName)
+  }
+  
+  return path.join('.')
+}
+
 export const default_style = new CSSStyleSheet()
 default_style.replaceSync(`
 :host {
